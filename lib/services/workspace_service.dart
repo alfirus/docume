@@ -51,4 +51,10 @@ class WorkspaceService {
     final value = mode == ThemeMode.dark ? 'dark' : 'light';
     await prefs.setString(_themeModeKey, value);
   }
+
+  Future<void> clearWorkspaceConfig() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_providerKey);
+    await prefs.remove(_directoryKey);
+  }
 }

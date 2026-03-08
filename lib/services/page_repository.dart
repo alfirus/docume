@@ -38,10 +38,20 @@ class PageRepository {
 
   Future<List<DocPage>> getAllPages() async {
     if (_workspaceConfig.provider == WorkspaceProvider.local) {
+      final cachedPages = await _readCachedPages();
       final localPages = await _readLocalPages();
-      if (localPages != null) {
+      if (localPages != null && localPages.isNotEmpty) {
+        await _writeCachedPages(localPages);
         return _sortPages(localPages);
       }
+
+      if (cachedPages.isNotEmpty) {
+        // Best-effort mirror back to local files if local storage is available.
+        await _writeLocalPages(cachedPages);
+        return _sortPages(cachedPages);
+      }
+
+      return [];
     }
 
     if (_workspaceConfig.provider == WorkspaceProvider.googleDrive) {
@@ -80,9 +90,11 @@ class PageRepository {
   Future<void> savePages(List<DocPage> pages) async {
     if (_workspaceConfig.provider == WorkspaceProvider.local) {
       final wroteToLocal = await _writeLocalPages(pages);
+      await _writeCachedPages(pages);
       if (wroteToLocal) {
         return;
       }
+      return;
     }
 
     if (_workspaceConfig.provider == WorkspaceProvider.googleDrive) {
@@ -120,27 +132,78 @@ class PageRepository {
     return pages;
   }
 
-  String get _localFilePath {
+  String get _localPagesDirectory {
+    final directory = _workspaceConfig.directory.trim();
+    return '$directory/pages';
+  }
+
+  String get _oldLocalFilePath {
     final directory = _workspaceConfig.directory.trim();
     return '$directory/pages.json';
   }
 
-  Future<List<DocPage>?> _readLocalPages() async {
+  Future<void> _migrateFromOldFormat() async {
     try {
-      final file = File(_localFilePath);
-      if (!await file.exists()) {
-        return [];
+      final oldFile = File(_oldLocalFilePath);
+      if (!await oldFile.exists()) {
+        return;
       }
 
-      final raw = await file.readAsString();
+      final raw = await oldFile.readAsString();
       if (raw.isEmpty) {
-        return [];
+        await oldFile.delete();
+        return;
       }
 
       final decoded = jsonDecode(raw) as List<dynamic>;
-      return decoded
+      final pages = decoded
           .map((entry) => DocPage.fromMap(entry as Map<String, dynamic>))
           .toList();
+
+      // Write each page as individual file
+      final pagesDir = Directory(_localPagesDirectory);
+      await pagesDir.create(recursive: true);
+
+      for (final page in pages) {
+        final pageFile = File('$_localPagesDirectory/${page.id}.json');
+        final pageJson = jsonEncode(page.toMap());
+        await pageFile.writeAsString(pageJson, flush: true);
+      }
+
+      // Delete old pages.json after successful migration
+      await oldFile.delete();
+    } catch (_) {
+      // Migration failed, old file will be retried next time
+    }
+  }
+
+  Future<List<DocPage>?> _readLocalPages() async {
+    try {
+      // Check and migrate from old format if needed
+      await _migrateFromOldFormat();
+
+      final pagesDir = Directory(_localPagesDirectory);
+      if (!await pagesDir.exists()) {
+        return [];
+      }
+
+      final pages = <DocPage>[];
+      await for (final entity in pagesDir.list()) {
+        if (entity is File && entity.path.endsWith('.json')) {
+          try {
+            final raw = await entity.readAsString();
+            if (raw.isNotEmpty) {
+              final decoded = jsonDecode(raw) as Map<String, dynamic>;
+              pages.add(DocPage.fromMap(decoded));
+            }
+          } catch (_) {
+            // Skip corrupted page files
+            continue;
+          }
+        }
+      }
+
+      return pages;
     } catch (_) {
       return null;
     }
@@ -148,10 +211,39 @@ class PageRepository {
 
   Future<bool> _writeLocalPages(List<DocPage> pages) async {
     try {
-      final file = File(_localFilePath);
-      await file.parent.create(recursive: true);
-      final raw = jsonEncode(pages.map((page) => page.toMap()).toList());
-      await file.writeAsString(raw, flush: true);
+      final pagesDir = Directory(_localPagesDirectory);
+      await pagesDir.create(recursive: true);
+
+      // Get existing page IDs
+      final existingIds = <String>{};
+      if (await pagesDir.exists()) {
+        await for (final entity in pagesDir.list()) {
+          if (entity is File && entity.path.endsWith('.json')) {
+            final fileName = entity.path.split('/').last;
+            final pageId = fileName.substring(0, fileName.length - 5);
+            existingIds.add(pageId);
+          }
+        }
+      }
+
+      // Write each page as individual file
+      final newIds = <String>{};
+      for (final page in pages) {
+        newIds.add(page.id);
+        final pageFile = File('$_localPagesDirectory/${page.id}.json');
+        final pageJson = jsonEncode(page.toMap());
+        await pageFile.writeAsString(pageJson, flush: true);
+      }
+
+      // Delete page files that no longer exist
+      final deletedIds = existingIds.difference(newIds);
+      for (final pageId in deletedIds) {
+        final pageFile = File('${_localPagesDirectory}/$pageId.json');
+        if (await pageFile.exists()) {
+          await pageFile.delete();
+        }
+      }
+
       return true;
     } catch (_) {
       return false;

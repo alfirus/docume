@@ -79,8 +79,14 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Enter title
-      await tester.enterText(find.byType(TextField).first, 'Test Page');
+      // Switch to HTML mode and put title in the first line.
+      await tester.tap(find.byTooltip('HTML Mode'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byType(TextField).last,
+        '<h1>Test Page</h1><p>Body</p>',
+      );
       await tester.pumpAndSettle();
 
       // Note: Cannot easily test QuillEditor content entry in unit tests
@@ -92,7 +98,7 @@ void main() {
       await tester.tap(saveButton);
       await tester.pumpAndSettle();
 
-      // Should have navigated back (we're not in a PageListScreen, so scaffold will be gone)
+      // Save pops the editor route.
       expect(find.byType(PageEditorScreen), findsNothing);
     });
 
@@ -122,8 +128,11 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Verify title is populated
-      expect(find.text('Existing Page'), findsOneWidget);
+      // Verify existing title is moved into editor first line.
+      await tester.tap(find.byTooltip('HTML Mode'));
+      await tester.pumpAndSettle();
+      final contentField = tester.widget<TextField>(find.byType(TextField).last);
+      expect(contentField.controller?.text.contains('Existing Page'), isTrue);
 
       // Verify app bar shows "Edit Page"
       expect(find.text('Edit Page'), findsOneWidget);

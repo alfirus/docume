@@ -48,26 +48,72 @@ class SynologyDriveService {
     return '$synologyRoot/$relativePath';
   }
 
+  Future<void> _migrateFromOldFormat(String workspacePath) async {
+    try {
+      final oldFile = File('$workspacePath/pages.json');
+      if (!await oldFile.exists()) {
+        return;
+      }
+
+      final raw = await oldFile.readAsString();
+      if (raw.trim().isEmpty) {
+        await oldFile.delete();
+        return;
+      }
+
+      final decoded = jsonDecode(raw) as List<dynamic>;
+      final pages = decoded
+          .map((entry) => DocPage.fromMap(entry as Map<String, dynamic>))
+          .toList();
+
+      // Write each page as individual file
+      final pagesDir = Directory('$workspacePath/pages');
+      await pagesDir.create(recursive: true);
+
+      for (final page in pages) {
+        final pageFile = File('$workspacePath/pages/${page.id}.json');
+        final pageJson = jsonEncode(page.toMap());
+        await pageFile.writeAsString(pageJson, flush: true);
+      }
+
+      // Delete old pages.json after successful migration
+      await oldFile.delete();
+    } catch (_) {
+      // Migration failed, old file will be retried next time
+    }
+  }
+
   Future<List<DocPage>> readPages(String workspaceDirectory) async {
     final workspacePath = resolveWorkspacePath(workspaceDirectory);
     if (workspacePath == null) {
       throw const FormatException('Invalid Synology workspace path.');
     }
 
-    final file = File('$workspacePath/pages.json');
-    if (!await file.exists()) {
+    // Check and migrate from old format if needed
+    await _migrateFromOldFormat(workspacePath);
+
+    final pagesDir = Directory('$workspacePath/pages');
+    if (!await pagesDir.exists()) {
       return [];
     }
 
-    final raw = await file.readAsString();
-    if (raw.trim().isEmpty) {
-      return [];
+    final pages = <DocPage>[];
+    await for (final entity in pagesDir.list()) {
+      if (entity is File && entity.path.endsWith('.json')) {
+        try {
+          final raw = await entity.readAsString();
+          if (raw.isNotEmpty) {
+            final decoded = jsonDecode(raw) as Map<String, dynamic>;
+            pages.add(DocPage.fromMap(decoded));
+          }
+        } catch (_) {
+          // Skip corrupted page files
+          continue;
+        }
+      }
     }
 
-    final decoded = jsonDecode(raw) as List<dynamic>;
-    return decoded
-        .map((entry) => DocPage.fromMap(entry as Map<String, dynamic>))
-        .toList();
+    return pages;
   }
 
   Future<void> writePages(
@@ -79,10 +125,37 @@ class SynologyDriveService {
       throw const FormatException('Invalid Synology workspace path.');
     }
 
-    final file = File('$workspacePath/pages.json');
-    await file.parent.create(recursive: true);
+    final pagesDir = Directory('$workspacePath/pages');
+    await pagesDir.create(recursive: true);
 
-    final raw = jsonEncode(pages.map((page) => page.toMap()).toList());
-    await file.writeAsString(raw, flush: true);
+    // Get existing page IDs
+    final existingIds = <String>{};
+    if (await pagesDir.exists()) {
+      await for (final entity in pagesDir.list()) {
+        if (entity is File && entity.path.endsWith('.json')) {
+          final fileName = entity.path.split('/').last;
+          final pageId = fileName.substring(0, fileName.length - 5);
+          existingIds.add(pageId);
+        }
+      }
+    }
+
+    // Write each page as individual file
+    final newIds = <String>{};
+    for (final page in pages) {
+      newIds.add(page.id);
+      final pageFile = File('$workspacePath/pages/${page.id}.json');
+      final pageJson = jsonEncode(page.toMap());
+      await pageFile.writeAsString(pageJson, flush: true);
+    }
+
+    // Delete page files that no longer exist
+    final deletedIds = existingIds.difference(newIds);
+    for (final pageId in deletedIds) {
+      final pageFile = File('$workspacePath/pages/$pageId.json');
+      if (await pageFile.exists()) {
+        await pageFile.delete();
+      }
+    }
   }
 }

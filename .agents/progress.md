@@ -168,20 +168,141 @@
   * Added active Material/Cupertino theme bridging in `lib/main.dart` based on selected light/dark mode
   * Added widget regression test covering toggle UI update and persisted `theme_mode` preference
   * Test baseline updated to 45 passing tests
-
+- **Added page tagging/categorization system**:
+  * Extended `DocPage` model with `tags` field (List<String>)
+  * Added tag management UI in page editor:
+    - Tag input field with "Add" button
+    - Tag chips display with delete functionality
+    - Prevents duplicate tag entries
+  * Added tag filtering in page list screen:
+    - "All" filter chip to show all pages
+    - Individual filter chips for each tag
+    - Horizontal scrollable tag filter bar (mobile + desktop)
+  * Tag display in page list items:
+    - Tags shown as colored chips below page metadata
+    - Uses theme's primaryContainer color scheme
+  * Tags persist through JSON serialization (toMap/fromMap)
+  * Backwards compatible: missing tags field defaults to empty list
+  * Created `test/tagging_test.dart` with 7 unit tests:
+    - Tag creation, serialization, deserialization tests
+    - JSON roundtrip preservation test
+    - copyWith updates test
+  * Test baseline updated to 52 passing tests (45 existing + 7 new)
+- **Added hierarchical sub-page support**:
+  * Extended `DocPage` model with `parentId` field (String?) for parent-child relationships
+  * Added parent selection dropdown in page editor:
+    - Optional parent page picker shown below title input
+    - Lists all valid parent candidates (excludes page itself and its descendants to prevent cycles)
+    - Default option: "No parent (top-level page)"
+  * Implemented hierarchical page list rendering:
+    - Visual indentation and arrow icons for sub-pages
+    - Shows "Sub-page of [Parent]" label in metadata
+    - Parent info displayed in desktop preview pane
+  * Added "New sub-page" quick action button on each page row
+  * Implemented cascading delete: deleting a page also removes its descendants
+  * Backward compatible: existing pages without `parentId` are treated as top-level
+  * `copyWith` uses sentinel object pattern to allow clearing parent link
+  * All 52 tests passing
+- **Converted page list to interactive tree view**:
+  * Added expand/collapse controls for parent pages
+  * Tree icons (chevron right/down) show expand/collapse state
+  * Child pages only visible when parent is expanded
+  * Each parent page can be independently expanded or collapsed
+  * Maintains tree state during navigation and operations
+  * Clean visual hierarchy with proper indentation
+- **Improved desktop sidebar tree UX**:
+  * Replaced manual indented list look with recursive `ExpansionTile` tree nodes
+  * Parent nodes now use native expand/collapse behavior with persistent state
+  * Tree rows are visually cleaner and easier to scan
+  * Kept per-node quick actions (new sub-page, delete) and selection behavior
+  * Added depth guide lines and compact node styling for stronger hierarchy readability
+  * Added selected-node surface highlight and border for clearer active context
+  * Reduced visual noise by removing default tile dividers inside expanded branches
+- **Added Settings reset flow**:
+  * Added Settings button in app bars (mobile + desktop) on page list screen
+  * Added Settings dialog with "Reset App" action in a danger zone section
+  * Added destructive confirmation dialog before reset is executed
+  * Reset now clears current pages, removes workspace config, clears cached page/queue keys, and returns user to workspace setup (first-time flow)
+  * Test baseline remains 52 passing tests
+  * Relocated light/dark theme toggle from app bar to Settings dialog
+  * Updated widget regression test to toggle theme via Settings dialog flow
+- **Improved workspace directory picker UX**:
+  * `Choose Directory` now seeds OS directory browser using current input value (when valid absolute path)
+  * After user picks a folder, Workspace Directory input is updated immediately with selected path
+  * Added macOS sandbox entitlement `com.apple.security.files.user-selected.read-write` (DebugProfile + Release) to allow OS directory panel access
+- **Migrated storage architecture from single file to file-per-page structure**:
+  * Changed from single `pages.json` to individual page files in `pages/` directory
+  * Each page stored as `<page-id>.json` containing single page JSON object
+  * Updated all storage providers (Local, Google Drive, iCloud, Synology) to support new structure
+  * Added automatic migration logic in all services:
+    - Detects old `pages.json` file on first read
+    - Converts all pages to individual files
+    - Deletes old `pages.json` after successful migration
+  * Google Drive creates `pages/` subfolder in workspace folder
+  * Local, iCloud, and Synology providers create `pages/` directory in workspace path
+  * Write operations now handle individual file updates and cleanup of deleted pages
+  * Benefits: better scalability, easier version control, clearer structure for hierarchical pages
+  * All 52 tests passing with new storage architecture
+- **Fixed page loss after app relaunch for Local workspace**:
+  * Root cause: local workspace setup default path (`/DocumeWorkspace`) can be unwritable on macOS, causing local file writes to fail.
+  * Updated setup default to `$HOME/DocumeWorkspace` and proactively creates the folder during setup.
+  * Updated local repository flow to keep SharedPreferences cache in sync for every local save.
+  * On load, if local storage is empty/unavailable but cache has pages, app restores from cache and mirrors back to local files as best effort.
+  * Regression check: `flutter test` still passes (52/52).
+- **Changed page title source to editor first line**:
+  * Removed dedicated Title field from New/Edit page form.
+  * Title is now derived from the first non-empty line of editor content on save (WYSIWYG and HTML modes).
+  * Existing pages are initialized so the editor starts with title content in the first line for smoother editing.
+  * Updated WYSIWYG and integration tests to use first-line title flow.
+- **Fixed HTML line-break collapse on save**:
+  * Root cause: `<br/>` tags were ignored in HTML -> Quill document conversion.
+  * Updated `QuillHtmlConverterUtil` to map `<br>` to newline and normalize text with trailing newline for Quill.
+  * Added regression tests in `test/quill_html_converter_test.dart` to verify lines are not concatenated after conversion/roundtrip.
+  * Regression check: `flutter test` passes (54/54).
+- **Implemented page templates (faster page creation)**:
+  * Added `PageTemplate` model (`lib/models/page_template.dart`) and `PageTemplateService` (`lib/services/page_template_service.dart`).
+  * Added built-in templates: Meeting Notes, Product Spec, Journal Entry.
+  * Added create-page chooser in page list: Blank page or From template (mobile + desktop).
+  * Added template picker dialog and wired selected template HTML into new page editor flow.
+  * Added editor action `Save as template` (stores custom templates per workspace namespace).
+  * Added tests:
+    - `test/page_template_service_test.dart` for template CRUD and built-in behavior.
+    - Updated `test/integration_test.dart` for new create chooser and create-from-template flow.
+  * Regression check: `flutter test` passes (58/58).
+- **Added multi-format export functionality (PDF, DOCX, EPUB)**:
+  * Added export dependencies: `pdf` (v3.11.1), `printing` (v5.13.2), `archive` (v3.6.1), `path_provider` (v2.1.4).
+  * Created `ExportService` (`lib/services/export_service.dart`) with methods for exporting single pages and multiple pages.
+  * PDF export: Uses `pdf` package to generate formatted PDFs with page title, metadata (created/updated dates), tags, and content.
+  * EPUB export: Generates valid EPUB 3.0 archives with proper structure (mimetype, container.xml, content.opf, toc.ncx, chapters, CSS).
+  * DOCX export: Generates basic Word-compatible documents using OpenXML structure with title, metadata, tags, and formatted content.
+  * Added export menu to page list screen:
+    - Bulk export options: Export All to PDF, Export All to DOCX, Export All to EPUB
+    - Integrated with existing backup menu (Export JSON, Import JSON)
+  * Added export menu to page editor screen:
+    - Single page export options: Export to PDF, Export to DOCX, Export to EPUB
+    - Export button appears in app bar when editing existing pages
+  * File picker integration: Uses `file_selector` package to save exported files with suggested filenames.
+  * Added comprehensive export tests (`test/export_service_test.dart`):
+    - File format validation (PDF header, EPUB/DOCX ZIP structure)
+    - Single page and multi-page export tests
+    - Filename sanitization tests
+    - Edge case handling (empty content, special characters, line breaks)
+  * Regression check: `flutter test` passes (72/72 - added 14 new tests).
 
 ## Architecture Notes
 - Data model: `lib/models/doc_page.dart`
 - Workspace model: `lib/models/workspace_config.dart`
-- Storage service: `lib/services/page_repository.dart` (routes to file system, Drive API, or cache based on provider)
+- Storage service: `lib/services/page_repository.dart` (routes to file system, Drive API, or cache based on provider; manages individual page files in `pages/` directory)
 - Workspace service: `lib/services/workspace_service.dart` (workspace config + theme preference persistence)
+- Template service: `lib/services/page_template_service.dart` (built-in + custom template persistence per workspace namespace)
 - Workspace connector service: `lib/services/workspace_connector_service.dart`
-- Google Drive service: `lib/services/google_drive_service.dart` (Drive API wrapper with folder management and file I/O)
+- Google Drive service: `lib/services/google_drive_service.dart` (Drive API wrapper with folder management and individual page file I/O in `pages/` folder)
 - Google Drive queue service: `lib/services/google_drive_sync_queue_service.dart` (offline pending snapshot queue + retry state)
 - Conflict resolution service: `lib/services/conflict_resolution_service.dart` (stale edit detection + merge strategy)
-- iCloud service: `lib/services/icloud_service.dart` (iCloud path mapping + `pages.json` file I/O)
-- Synology service: `lib/services/synology_drive_service.dart` (Synology path mapping + `pages.json` file I/O)
-+- Quill HTML converter: `lib/utils/quill_html_converter.dart` (bidirectional HTML and Quill Delta conversion)
+- iCloud service: `lib/services/icloud_service.dart` (iCloud path mapping + individual page file I/O in `pages/` directory)
+- Synology service: `lib/services/synology_drive_service.dart` (Synology path mapping + individual page file I/O in `pages/` directory)
+- Export service: `lib/services/export_service.dart` (PDF, DOCX, and EPUB export for single pages and bulk export)
+- Quill HTML converter: `lib/utils/quill_html_converter.dart` (bidirectional HTML and Quill Delta conversion)
 - Screens:
   - `lib/screens/page_list_screen.dart`
   - `lib/screens/page_editor_screen.dart`
@@ -191,10 +312,11 @@
 ## Suggested Next Steps
 1. ~~Add rich text editor (WYSIWYG) mode for better content authoring~~ ✅ COMPLETED
 2. ~~Use https://pub.dev/packages/shadcn_flutter as default UI style~~ ✅ COMPLETED
-3. ~~Fix remaining failing tests~~ ✅ COMPLETED (all 45 tests passing)
-4. Implement page templates for faster page creation
-5. Add page tagging/categorization system
-6. Implement full-text search across all pages and providers
-7. Add page versioning/history tracking
-8. Implement collaborative editing features (real-time sync)
-9. Add export-to-PDF, export-to-DOCX, export-to-EPUB and export-to-JSON functionality
+3. ~~Fix remaining failing tests~~ ✅ COMPLETED
+4. ~~Add page tagging/categorization system~~ ✅ COMPLETED (all 52 tests passing)
+5. ~~Make page can be structure as sub page~~ ✅ COMPLETED
+6. ~~Implement page templates for faster page creation~~ ✅ COMPLETED
+7. ~~Add export-to-PDF, export-to-DOCX, export-to-EPUB functionality~~ ✅ COMPLETED (all 72 tests passing)
+8. Implement full-text search across all pages and providers
+9. Add page versioning/history tracking
+10. Implement collaborative editing features (real-time sync)

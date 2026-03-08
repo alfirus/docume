@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart' as shad;
 
 import 'models/workspace_config.dart';
@@ -73,6 +74,32 @@ class _DocumeAppState extends State<DocumeApp> {
     });
   }
 
+  Future<void> _resetWorkspace() async {
+    final prefs = await SharedPreferences.getInstance();
+    final pageKeys = prefs
+        .getKeys()
+        .where(
+          (key) =>
+              key.startsWith('docume_pages_') ||
+              key.startsWith('docume_gdrive_queue_'),
+        )
+        .toList();
+
+    for (final key in pageKeys) {
+      await prefs.remove(key);
+    }
+
+    await _workspaceService.clearWorkspaceConfig();
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _workspaceConfig = null;
+    });
+  }
+
   ThemeData _buildMaterialTheme(shad.ThemeData activeTheme) {
     return ThemeData.from(
       colorScheme: ColorScheme.fromSeed(
@@ -120,6 +147,7 @@ class _DocumeAppState extends State<DocumeApp> {
               workspaceConfig: _workspaceConfig!,
               themeMode: _themeMode,
               onThemeModeChanged: _setThemeMode,
+              onResetRequested: _resetWorkspace,
             ),
     );
   }

@@ -15,7 +15,9 @@ class QuillHtmlConverterUtil {
     try {
       // Parse HTML to extract text content
       final document = html_parser.parse(html);
-      final textContent = _extractTextWithFormatting(document.body);
+      final textContent = _normalizeForQuill(
+        _extractTextWithFormatting(document.body),
+      );
       
       if (textContent.isEmpty) {
         return Document()..insert(0, '\n');
@@ -40,6 +42,11 @@ class QuillHtmlConverterUtil {
       if (node is dom.Text) {
         buffer.write(node.text);
       } else if (node is dom.Element) {
+        if (node.localName?.toLowerCase() == 'br') {
+          buffer.write('\n');
+          continue;
+        }
+
         // Add newlines for block elements
         if (_isBlockElement(node.localName)) {
           buffer.write('\n');
@@ -52,6 +59,16 @@ class QuillHtmlConverterUtil {
     }
     
     return buffer.toString();
+  }
+
+  /// Normalize extracted text for Quill insertion.
+  /// Quill expects lines to end with a trailing newline.
+  static String _normalizeForQuill(String text) {
+    final normalized = text.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+    if (normalized.isEmpty) {
+      return normalized;
+    }
+    return normalized.endsWith('\n') ? normalized : '$normalized\n';
   }
 
   /// Check if an HTML element is a block element

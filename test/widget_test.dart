@@ -7,10 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:docume/main.dart';
 
 void main() {
-  Future<void> pumpUntilVisible(
-    WidgetTester tester,
-    Finder finder,
-  ) async {
+  Future<void> pumpUntilVisible(WidgetTester tester, Finder finder) async {
     for (var i = 0; i < 30; i++) {
       await tester.pump(const Duration(milliseconds: 100));
       if (finder.evaluate().isNotEmpty) {
@@ -29,11 +26,14 @@ void main() {
     expect(find.text('Choose workspace storage'), findsOneWidget);
   });
 
-  testWidgets('configured workspace opens empty page list', (WidgetTester tester) async {
+  testWidgets('configured workspace opens empty page list', (
+    WidgetTester tester,
+  ) async {
     const provider = 'icloud';
     const directory = 'icloud:/DocumeWorkspace';
     final namespace = '$provider|$directory';
-    final storageKey = 'docume_pages_${base64Url.encode(utf8.encode(namespace))}';
+    final storageKey =
+        'docume_pages_${base64Url.encode(utf8.encode(namespace))}';
 
     SharedPreferences.setMockInitialValues({
       'workspace_provider': provider,
@@ -43,10 +43,16 @@ void main() {
 
     await tester.pumpWidget(const DocumeApp());
     await pumpUntilVisible(tester, find.text('Docume'));
-    await pumpUntilVisible(tester, find.text('No pages yet. Tap + to create your first HTML page.'));
+    await pumpUntilVisible(
+      tester,
+      find.text('No pages yet. Tap + to create your first HTML page.'),
+    );
 
     expect(find.text('Docume'), findsOneWidget);
-    expect(find.text('No pages yet. Tap + to create your first HTML page.'), findsOneWidget);
+    expect(
+      find.text('No pages yet. Tap + to create your first HTML page.'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('theme toggle switches mode and persists preference', (
@@ -66,14 +72,18 @@ void main() {
     });
 
     await tester.pumpWidget(const DocumeApp());
-    await pumpUntilVisible(tester, find.byTooltip('Switch to dark mode'));
+    await pumpUntilVisible(tester, find.byTooltip('Settings'));
 
-    expect(find.byIcon(Icons.light_mode), findsOneWidget);
-
-    await tester.tap(find.byTooltip('Switch to dark mode'));
+    await tester.tap(find.byTooltip('Settings'));
     await tester.pump(const Duration(milliseconds: 300));
 
-    expect(find.byIcon(Icons.dark_mode), findsOneWidget);
+    expect(find.text('Settings'), findsOneWidget);
+    expect(find.text('Use Dark'), findsOneWidget);
+
+    await tester.tap(find.text('Use Dark'));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('Settings'), findsNothing);
 
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getString('theme_mode'), equals('dark'));

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart' as shad;
 
@@ -5,10 +7,7 @@ import '../models/workspace_config.dart';
 import '../services/workspace_connector_service.dart';
 
 class WorkspaceSetupScreen extends StatefulWidget {
-  const WorkspaceSetupScreen({
-    super.key,
-    required this.onComplete,
-  });
+  const WorkspaceSetupScreen({super.key, required this.onComplete});
 
   final Future<void> Function(WorkspaceConfig config) onComplete;
 
@@ -20,14 +19,19 @@ class _WorkspaceSetupScreenState extends State<WorkspaceSetupScreen> {
   static const _enabledProviders = [WorkspaceProvider.local];
 
   WorkspaceProvider _provider = WorkspaceProvider.local;
-  final WorkspaceConnectorService _connectorService = WorkspaceConnectorService();
+  final WorkspaceConnectorService _connectorService =
+      WorkspaceConnectorService();
   final TextEditingController _directoryController = TextEditingController();
   bool _isSaving = false;
 
   @override
   void initState() {
     super.initState();
-    _directoryController.text = '/DocumeWorkspace';
+    final homeDirectory = Platform.environment['HOME']?.trim();
+    _directoryController.text =
+        (homeDirectory != null && homeDirectory.isNotEmpty)
+        ? '$homeDirectory/DocumeWorkspace'
+        : '/DocumeWorkspace';
   }
 
   @override
@@ -47,23 +51,24 @@ class _WorkspaceSetupScreenState extends State<WorkspaceSetupScreen> {
         return;
       }
 
-      setState(() {
-        _directoryController.text = path;
-      });
+      _directoryController.text = path;
+      setState(() {});
     } on WorkspaceConnectorException catch (error) {
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
     } catch (_) {
       if (!mounted) {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Unable to connect provider. Check your provider setup and try again.'),
+          content: Text(
+            'Unable to connect provider. Check your provider setup and try again.',
+          ),
         ),
       );
     }
@@ -96,10 +101,28 @@ class _WorkspaceSetupScreenState extends State<WorkspaceSetupScreen> {
       _isSaving = true;
     });
 
-    final config = WorkspaceConfig(
-      provider: _provider,
-      directory: directory,
-    );
+    if (_provider == WorkspaceProvider.local) {
+      try {
+        await Directory(directory).create(recursive: true);
+      } catch (_) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isSaving = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Unable to access that folder. Choose a writable directory.',
+            ),
+          ),
+        );
+        return;
+      }
+    }
+
+    final config = WorkspaceConfig(provider: _provider, directory: directory);
 
     await widget.onComplete(config);
 
@@ -115,9 +138,7 @@ class _WorkspaceSetupScreenState extends State<WorkspaceSetupScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Set Workspace'),
-      ),
+      appBar: AppBar(title: const Text('Set Workspace')),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(16),
@@ -158,7 +179,10 @@ class _WorkspaceSetupScreenState extends State<WorkspaceSetupScreen> {
             ),
             const Padding(
               padding: EdgeInsets.only(bottom: 4.0),
-              child: Text('Workspace Directory', style: TextStyle(fontSize: 12)),
+              child: Text(
+                'Workspace Directory',
+                style: TextStyle(fontSize: 12),
+              ),
             ),
             const SizedBox(height: 12),
             Row(

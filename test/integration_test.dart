@@ -1,8 +1,6 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart' as shad;
@@ -15,10 +13,7 @@ void main() {
   final namespace = '$provider|$directory';
   final storageKey = 'docume_pages_${base64Url.encode(utf8.encode(namespace))}';
 
-  Future<void> pumpUntilVisible(
-    WidgetTester tester,
-    Finder finder,
-  ) async {
+  Future<void> pumpUntilVisible(WidgetTester tester, Finder finder) async {
     for (var i = 0; i < 30; i++) {
       await tester.pump(const Duration(milliseconds: 100));
       if (finder.evaluate().isNotEmpty) {
@@ -27,10 +22,7 @@ void main() {
     }
   }
 
-  Future<void> pumpWithSize(
-    WidgetTester tester, {
-    required Size size,
-  }) async {
+  Future<void> pumpWithSize(WidgetTester tester, {required Size size}) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1.0;
     addTearDown(() {
@@ -43,7 +35,9 @@ void main() {
   }
 
   group('Mobile Integration Tests', () {
-    testWidgets('create and delete page flow on mobile', (WidgetTester tester) async {
+    testWidgets('create and delete page flow on mobile', (
+      WidgetTester tester,
+    ) async {
       SharedPreferences.setMockInitialValues({
         'workspace_provider': provider,
         'workspace_directory': directory,
@@ -53,7 +47,8 @@ void main() {
       await pumpWithSize(tester, size: const Size(390, 844));
       await pumpUntilVisible(tester, find.text('Docume'));
 
-      const emptyMessage = 'No pages yet. Tap + to create your first HTML page.';
+      const emptyMessage =
+          'No pages yet. Tap + to create your first HTML page.';
       await pumpUntilVisible(tester, find.text(emptyMessage));
       expect(find.text(emptyMessage), findsOneWidget);
 
@@ -61,6 +56,9 @@ void main() {
       final fab = find.byType(FloatingActionButton);
       expect(fab, findsOneWidget);
       await tester.tap(fab);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Blank page'));
       await tester.pumpAndSettle();
 
       expect(find.text('New Page'), findsOneWidget);
@@ -71,13 +69,12 @@ void main() {
       await tester.tap(toggleButton);
       await tester.pumpAndSettle();
 
-      // Fill in title and content
-      final titleField = find.byType(TextField).first;
-      await tester.enterText(titleField, 'Integration Test Page');
-      await tester.pumpAndSettle();
-
+      // Fill in content with title in first line.
       final contentField = find.byType(TextField).last;
-      await tester.enterText(contentField, '<p>Test content</p>');
+      await tester.enterText(
+        contentField,
+        '<h1>Integration Test Page</h1><p>Test content</p>',
+      );
       await tester.pumpAndSettle();
 
       // Save
@@ -101,47 +98,56 @@ void main() {
       expect(find.text(emptyMessage), findsOneWidget);
     });
 
-    testWidgets('invalid backup import does not replace existing page on mobile', (
-      WidgetTester tester,
-    ) async {
-      final createdAt = DateTime(2026, 3, 1).toIso8601String();
-      final updatedAt = DateTime(2026, 3, 2).toIso8601String();
+    testWidgets(
+      'invalid backup import does not replace existing page on mobile',
+      (WidgetTester tester) async {
+        final createdAt = DateTime(2026, 3, 1).toIso8601String();
+        final updatedAt = DateTime(2026, 3, 2).toIso8601String();
 
-      SharedPreferences.setMockInitialValues({
-        'workspace_provider': provider,
-        'workspace_directory': directory,
-        storageKey: jsonEncode([
-          {
-            'id': 'initial-1',
-            'title': 'Initial Page',
-            'htmlContent': '<p>Existing page</p>',
-            'createdAt': createdAt,
-            'updatedAt': updatedAt,
-          },
-        ]),
-      });
+        SharedPreferences.setMockInitialValues({
+          'workspace_provider': provider,
+          'workspace_directory': directory,
+          storageKey: jsonEncode([
+            {
+              'id': 'initial-1',
+              'title': 'Initial Page',
+              'htmlContent': '<p>Existing page</p>',
+              'createdAt': createdAt,
+              'updatedAt': updatedAt,
+            },
+          ]),
+        });
 
-      await pumpWithSize(tester, size: const Size(390, 844));
-      await pumpUntilVisible(tester, find.text('Initial Page'));
+        await pumpWithSize(tester, size: const Size(390, 844));
+        await pumpUntilVisible(tester, find.text('Initial Page'));
 
-      await tester.tap(find.byIcon(Icons.more_vert));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Import JSON'));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byIcon(Icons.more_vert));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Import JSON'));
+        await tester.pumpAndSettle();
 
-      // The import flow only accepts a JSON array of page objects.
-      await tester.enterText(find.byType(TextField).last, '{"id":"bad-shape"}');
-      await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(TextButton, 'Import'));
-      await tester.pumpAndSettle();
+        // The import flow only accepts a JSON array of page objects.
+        await tester.enterText(
+          find.byType(TextField).last,
+          '{"id":"bad-shape"}',
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(TextButton, 'Import'));
+        await tester.pumpAndSettle();
 
-      expect(find.text('Import failed: invalid backup JSON.'), findsOneWidget);
-      expect(find.text('Initial Page'), findsOneWidget);
-    });
+        expect(
+          find.text('Import failed: invalid backup JSON.'),
+          findsOneWidget,
+        );
+        expect(find.text('Initial Page'), findsOneWidget);
+      },
+    );
   });
 
   group('Desktop Integration Tests', () {
-    testWidgets('create and edit page flow on desktop', (WidgetTester tester) async {
+    testWidgets('create and edit page flow on desktop', (
+      WidgetTester tester,
+    ) async {
       SharedPreferences.setMockInitialValues({
         'workspace_provider': provider,
         'workspace_directory': directory,
@@ -151,7 +157,8 @@ void main() {
       await pumpWithSize(tester, size: const Size(1280, 800));
       await pumpUntilVisible(tester, find.text('Docume'));
 
-      const emptyMessage = 'No pages yet. Tap + to create your first HTML page.';
+      const emptyMessage =
+          'No pages yet. Tap + to create your first HTML page.';
       await pumpUntilVisible(tester, find.text(emptyMessage));
       expect(find.text(emptyMessage), findsOneWidget);
 
@@ -159,6 +166,9 @@ void main() {
       final addButton = find.widgetWithIcon(IconButton, Icons.add);
       expect(addButton, findsOneWidget);
       await tester.tap(addButton);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Blank page'));
       await tester.pumpAndSettle();
 
       expect(find.text('New Page'), findsOneWidget);
@@ -169,10 +179,11 @@ void main() {
       await tester.tap(toggleButton);
       await tester.pumpAndSettle();
 
-      // Fill in content
-      await tester.enterText(find.byType(TextField).first, 'Desktop Page');
-      await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField).last, '<h1>Desktop Test</h1>');
+      // Fill in content with title in first line.
+      await tester.enterText(
+        find.byType(TextField).last,
+        '<h1>Desktop Page</h1><p>Desktop Test</p>',
+      );
       await tester.pumpAndSettle();
 
       // Save
@@ -185,6 +196,39 @@ void main() {
       await pumpUntilVisible(tester, find.text('Desktop Page'));
       // Desktop page list shows the title
       expect(find.text('Desktop Page'), findsWidgets);
+    });
+
+    testWidgets('create page from built-in template on desktop', (
+      WidgetTester tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({
+        'workspace_provider': provider,
+        'workspace_directory': directory,
+        storageKey: jsonEncode([]),
+      });
+
+      await pumpWithSize(tester, size: const Size(1280, 800));
+      await pumpUntilVisible(tester, find.text('Docume'));
+
+      final addButton = find.widgetWithIcon(IconButton, Icons.add);
+      expect(addButton, findsOneWidget);
+      await tester.tap(addButton);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('From template'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Meeting Notes').first);
+      await tester.pumpAndSettle();
+
+      expect(find.text('New Page'), findsOneWidget);
+
+      final saveButton = find.widgetWithText(shad.PrimaryButton, 'Save');
+      expect(saveButton, findsOneWidget);
+      await tester.tap(saveButton);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Meeting Notes'), findsWidgets);
     });
   });
 }
