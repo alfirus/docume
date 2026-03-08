@@ -19,11 +19,20 @@ It now supports mobile and desktop installs with adaptive UI.
 - Sort pages by newest, oldest, or title
 - Export backup JSON (copy to clipboard)
 - Import backup JSON (paste into app)
-- Insert basic HTML snippets (Bold, H1, List) from editor toolbar
+- Insert HTML snippets from editor toolbar (Bold, H1-H6, Section, Link, List)
 - Track page metadata (created date, updated date, word count)
 - Adaptive UI:
 	- Mobile: list-first navigation
 	- Desktop: two-pane layout (page list + content preview)
+- Concurrent edit conflict handling:
+	- Detects stale edits before save
+	- Side-by-side conflict comparison
+	- Field-level merge options for title/content
+	- Resolution options: Keep Mine, Keep Remote, Merge
+- Theme mode support:
+  - Light and Dark modes
+  - Theme toggle in page list app bar
+  - Persisted user preference across app restarts
 
 ## Workspace Behavior
 
@@ -37,7 +46,8 @@ It now supports mobile and desktop installs with adaptive UI.
 - Persistence mode:
   - **Local provider**: stores pages in `<workspace-directory>/pages.json` on file system
   - **Google Drive provider**: stores pages in `pages.json` file in Drive folder via Drive API
-  - **iCloud / Synology**: currently store pages in namespaced local cache (API integration pending)
+	- **iCloud provider**: stores pages in `pages.json` under iCloud Drive path mapping (`icloud:/...` -> `~/Library/Mobile Documents/com~apple~CloudDocs/...` on macOS)
+	- **Synology provider**: stores pages in `pages.json` under Synology Drive path mapping (`synology:/...` -> `~/SynologyDrive/...`)
 
 ## Current Connector Scope
 
@@ -46,7 +56,9 @@ It now supports mobile and desktop installs with adaptive UI.
   - Authentication via Google Sign-In
   - Automatic folder creation/discovery
   - Remote `pages.json` storage in Drive folder
-- **iCloud / Synology**: Path-based workspace setup complete, full API integration pending
+	- Offline queue for failed writes, with automatic retry on subsequent loads
+- **iCloud**: File-based integration using iCloud Drive folder path mapping on macOS
+- **Synology**: File-based integration using Synology Drive folder path mapping
 ## Testing
 
 The project includes comprehensive test coverage:
@@ -60,7 +72,17 @@ Run all tests:
 flutter test
 ```
 
-Current test count: **12 tests**, all passing.
+Current test count: **31 tests**, all passing.
+
+## Google Drive Setup (macOS)
+
+For Google Drive provider on macOS, run with a macOS OAuth Client ID to avoid native Google Sign-In initialization crashes:
+
+```bash
+flutter run -d macos --dart-define=GOOGLE_SIGN_IN_CLIENT_ID=YOUR_MACOS_OAUTH_CLIENT_ID.apps.googleusercontent.com
+```
+
+If this value is not provided, Docume now shows a setup error and blocks Google Drive connect calls instead of invoking native sign-in.
 
 ## Backup & Restore
 
@@ -93,7 +115,7 @@ Current test count: **12 tests**, all passing.
 This MVP focuses on single-user note management with local and cloud storage.
 - ✅ Local file storage
 - ✅ Google Drive cloud sync
-- ⏳ iCloud API integration (pending)
-- ⏳ Synology Drive API integration (pending)
+- ✅ iCloud file-based storage integration
+- ✅ Synology file-based storage integration
 
 It does not yet include collaboration, permissions, or version history.

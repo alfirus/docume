@@ -91,6 +91,44 @@ void main() {
       await pumpUntilVisible(tester, find.text(emptyMessage));
       expect(find.text(emptyMessage), findsOneWidget);
     });
+
+    testWidgets('invalid backup import does not replace existing page on mobile', (
+      WidgetTester tester,
+    ) async {
+      final createdAt = DateTime(2026, 3, 1).toIso8601String();
+      final updatedAt = DateTime(2026, 3, 2).toIso8601String();
+
+      SharedPreferences.setMockInitialValues({
+        'workspace_provider': provider,
+        'workspace_directory': directory,
+        storageKey: jsonEncode([
+          {
+            'id': 'initial-1',
+            'title': 'Initial Page',
+            'htmlContent': '<p>Existing page</p>',
+            'createdAt': createdAt,
+            'updatedAt': updatedAt,
+          },
+        ]),
+      });
+
+      await pumpWithSize(tester, size: const Size(390, 844));
+      await pumpUntilVisible(tester, find.text('Initial Page'));
+
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Import JSON'));
+      await tester.pumpAndSettle();
+
+      // The import flow only accepts a JSON array of page objects.
+      await tester.enterText(find.byType(TextField).last, '{"id":"bad-shape"}');
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, 'Import'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Import failed: invalid backup JSON.'), findsOneWidget);
+      expect(find.text('Initial Page'), findsOneWidget);
+    });
   });
 
   group('Desktop Integration Tests', () {

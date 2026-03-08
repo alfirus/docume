@@ -6,7 +6,9 @@ import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 
 import '../models/doc_page.dart';
 import '../models/workspace_config.dart';
+import '../services/conflict_resolution_service.dart';
 import '../services/page_repository.dart';
+import '../widgets/conflict_merge_dialog.dart';
 import 'page_editor_screen.dart';
 import 'page_view_screen.dart';
 
@@ -18,9 +20,13 @@ class PageListScreen extends StatefulWidget {
   const PageListScreen({
     super.key,
     required this.workspaceConfig,
+    required this.themeMode,
+    required this.onThemeModeChanged,
   });
 
   final WorkspaceConfig workspaceConfig;
+  final ThemeMode themeMode;
+  final ValueChanged<ThemeMode> onThemeModeChanged;
 
   @override
   State<PageListScreen> createState() => _PageListScreenState();
@@ -30,6 +36,8 @@ class _PageListScreenState extends State<PageListScreen> {
   static const _desktopBreakpoint = 900.0;
 
   late final PageRepository _repository;
+  final ConflictResolutionService _conflictResolutionService =
+      ConflictResolutionService();
   final TextEditingController _searchController = TextEditingController();
   List<DocPage> _pages = [];
   bool _isLoading = true;
@@ -84,22 +92,52 @@ class _PageListScreenState extends State<PageListScreen> {
 
   Future<void> _openEditor({DocPage? page}) async {
     final result = await Navigator.of(context).push<DocPage>(
-      MaterialPageRoute(
-        builder: (_) => PageEditorScreen(initialPage: page),
-      ),
+      MaterialPageRoute(builder: (_) => PageEditorScreen(initialPage: page)),
     );
 
     if (result == null) {
       return;
     }
 
-    final existingIndex = _pages.indexWhere((entry) => entry.id == result.id);
+    final latestPages = await _repository.getAllPages();
+    var resolvedResult = result;
+
+    if (page != null) {
+      final remoteIndex = latestPages.indexWhere(
+        (entry) => entry.id == page.id,
+      );
+      if (remoteIndex != -1) {
+        final remotePage = latestPages[remoteIndex];
+        final hasConflict = _conflictResolutionService.hasConflict(
+          basePage: page,
+          remotePage: remotePage,
+        );
+
+        if (hasConflict) {
+          if (!mounted) {
+            return;
+          }
+          final resolvedPage = await _showConflictDialog(
+            myPage: result,
+            remotePage: remotePage,
+          );
+          if (resolvedPage == null) {
+            return;
+          }
+          resolvedResult = resolvedPage;
+        }
+      }
+    }
+
+    final existingIndex = latestPages.indexWhere(
+      (entry) => entry.id == resolvedResult.id,
+    );
     List<DocPage> updated;
     if (existingIndex == -1) {
-      updated = [..._pages, result];
+      updated = [...latestPages, resolvedResult];
     } else {
-      updated = [..._pages];
-      updated[existingIndex] = result;
+      updated = [...latestPages];
+      updated[existingIndex] = resolvedResult;
     }
 
     _sortPages(updated);
@@ -110,8 +148,32 @@ class _PageListScreenState extends State<PageListScreen> {
     }
     setState(() {
       _pages = updated;
-      _selectedPageId = result.id;
+      _selectedPageId = resolvedResult.id;
     });
+
+    if (resolvedResult.htmlContent.contains('Merged conflict content')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Conflict resolved and saved.')),
+      );
+    }
+  }
+
+  Future<DocPage?> _showConflictDialog({
+    required DocPage myPage,
+    required DocPage remotePage,
+  }) {
+    return showDialog<DocPage>(
+      context: context,
+      builder: (context) {
+        return ConflictMergeDialog(
+          myPage: myPage,
+          remotePage: remotePage,
+          onResolve: (resolvedPage) {
+            Navigator.pop(context, resolvedPage);
+          },
+        );
+      },
+    );
   }
 
   Future<void> _openViewer(DocPage page) async {
@@ -161,7 +223,9 @@ class _PageListScreenState extends State<PageListScreen> {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Export failed: clipboard is unavailable.')),
+        const SnackBar(
+          content: Text('Export failed: clipboard is unavailable.'),
+        ),
       );
     }
   }
@@ -268,6 +332,23 @@ class _PageListScreenState extends State<PageListScreen> {
     );
   }
 
+  ThemeMode get _nextThemeMode {
+    return widget.themeMode == ThemeMode.dark
+        ? ThemeMode.light
+        : ThemeMode.dark;
+  }
+
+  Widget _buildThemeToggleButton() {
+    final isDark = widget.themeMode == ThemeMode.dark;
+    return IconButton(
+      onPressed: () {
+        widget.onThemeModeChanged(_nextThemeMode);
+      },
+      icon: Icon(isDark ? Icons.dark_mode : Icons.light_mode),
+      tooltip: isDark ? 'Switch to light mode' : 'Switch to dark mode',
+    );
+  }
+
   String _dateLabel(DateTime dateTime) {
     return '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}';
   }
@@ -289,12 +370,12 @@ class _PageListScreenState extends State<PageListScreen> {
     final filtered = query.isEmpty
         ? [..._pages]
         : _pages
-            .where(
-              (page) =>
-                  page.title.toLowerCase().contains(query) ||
-                  page.htmlContent.toLowerCase().contains(query),
-            )
-            .toList();
+              .where(
+                (page) =>
+                    page.title.toLowerCase().contains(query) ||
+                    page.htmlContent.toLowerCase().contains(query),
+              )
+              .toList();
     _sortPages(filtered);
     return filtered;
   }
@@ -308,7 +389,9 @@ class _PageListScreenState extends State<PageListScreen> {
         pages.sort((a, b) => a.updatedAt.compareTo(b.updatedAt));
         break;
       case PageSort.titleAsc:
-        pages.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+        pages.sort(
+          (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
+        );
         break;
     }
   }
@@ -330,7 +413,9 @@ class _PageListScreenState extends State<PageListScreen> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final isDesktop = constraints.maxWidth >= _desktopBreakpoint;
-        return isDesktop ? _buildDesktopLayout(pages) : _buildMobileLayout(pages);
+        return isDesktop
+            ? _buildDesktopLayout(pages)
+            : _buildMobileLayout(pages);
       },
     );
   }
@@ -372,10 +457,7 @@ class _PageListScreenState extends State<PageListScreen> {
       },
       itemBuilder: (context) => [
         for (final option in PageSort.values)
-          PopupMenuItem(
-            value: option,
-            child: Text(_sortLabel(option)),
-          ),
+          PopupMenuItem(value: option, child: Text(_sortLabel(option))),
       ],
       icon: const Icon(Icons.sort),
     );
@@ -408,11 +490,7 @@ class _PageListScreenState extends State<PageListScreen> {
             horizontal: 16,
             vertical: 4,
           ),
-          title: Text(
-            page.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
+          title: Text(page.title, maxLines: 1, overflow: TextOverflow.ellipsis),
           subtitle: Text(
             'Updated ${_dateLabel(page.updatedAt)} • ${page.wordCount} words',
           ),
@@ -438,7 +516,11 @@ class _PageListScreenState extends State<PageListScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Docume'),
-        actions: [_buildSortMenu(), _buildBackupMenu()],
+        actions: [
+          _buildThemeToggleButton(),
+          _buildSortMenu(),
+          _buildBackupMenu(),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -477,6 +559,7 @@ class _PageListScreenState extends State<PageListScreen> {
       appBar: AppBar(
         title: const Text('Docume'),
         actions: [
+          _buildThemeToggleButton(),
           _buildSortMenu(),
           _buildBackupMenu(),
           IconButton(
@@ -523,7 +606,9 @@ class _PageListScreenState extends State<PageListScreen> {
                 Expanded(
                   child: selected == null
                       ? const Center(
-                          child: Text('Select a page to view its HTML content.'),
+                          child: Text(
+                            'Select a page to view its HTML content.',
+                          ),
                         )
                       : SingleChildScrollView(
                           padding: const EdgeInsets.all(16),
@@ -535,11 +620,14 @@ class _PageListScreenState extends State<PageListScreen> {
                                   Expanded(
                                     child: Text(
                                       selected.title,
-                                      style: Theme.of(context).textTheme.headlineSmall,
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.headlineSmall,
                                     ),
                                   ),
                                   TextButton.icon(
-                                    onPressed: () => _openEditor(page: selected),
+                                    onPressed: () =>
+                                        _openEditor(page: selected),
                                     icon: const Icon(Icons.edit_outlined),
                                     label: const Text('Edit'),
                                   ),

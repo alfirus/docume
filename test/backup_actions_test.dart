@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:docume/main.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -109,5 +110,121 @@ void main() {
     expect(find.text('Imported 1 page(s).'), findsOneWidget);
     expect(find.text('Imported Page'), findsOneWidget);
     expect(find.text('Old Page'), findsNothing);
+  });
+
+  testWidgets('export JSON includes all pages and metadata fields', (WidgetTester tester) async {
+    String? capturedClipboardText;
+    final messenger = TestDefaultBinaryMessengerBinding
+        .instance
+        .defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.setData') {
+        final payload = call.arguments as Map<dynamic, dynamic>;
+        capturedClipboardText = payload['text'] as String?;
+      }
+      return null;
+    });
+    addTearDown(() {
+      messenger.setMockMethodCallHandler(SystemChannels.platform, null);
+    });
+
+    SharedPreferences.setMockInitialValues({
+      'workspace_provider': provider,
+      'workspace_directory': directory,
+      storageKey: jsonEncode([
+        {
+          'id': 'page-a',
+          'title': 'Export Alpha',
+          'htmlContent': '<p>Alpha body</p>',
+          'createdAt': '2026-03-01T00:00:00.000',
+          'updatedAt': '2026-03-03T00:00:00.000',
+        },
+        {
+          'id': 'page-b',
+          'title': 'Export Beta',
+          'htmlContent': '<h1>Beta</h1><p>Body</p>',
+          'createdAt': '2026-03-02T00:00:00.000',
+          'updatedAt': '2026-03-04T00:00:00.000',
+        },
+      ]),
+    });
+
+    await pumpWithSize(tester, size: const Size(390, 844));
+    await pumpUntilVisible(tester, find.text('Export Alpha'));
+
+    await tester.tap(find.byIcon(Icons.more_vert));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Export JSON'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Backup JSON copied to clipboard.'), findsOneWidget);
+    expect(capturedClipboardText, isNotNull);
+
+    final raw = capturedClipboardText!;
+
+    final decoded = jsonDecode(raw) as List<dynamic>;
+    expect(decoded.length, 2);
+
+    final byId = {
+      for (final item in decoded)
+        (item as Map<String, dynamic>)['id'] as String: item,
+    };
+
+    expect(byId['page-a'], isNotNull);
+    expect(byId['page-b'], isNotNull);
+
+    final pageA = byId['page-a']!;
+    final pageB = byId['page-b']!;
+
+    expect(pageA['title'], 'Export Alpha');
+    expect(pageA['createdAt'], '2026-03-01T00:00:00.000');
+    expect(pageA['updatedAt'], '2026-03-03T00:00:00.000');
+
+    expect(pageB['title'], 'Export Beta');
+    expect(pageB['createdAt'], '2026-03-02T00:00:00.000');
+    expect(pageB['updatedAt'], '2026-03-04T00:00:00.000');
+  });
+
+  testWidgets('import invalid JSON shows error and keeps existing pages', (WidgetTester tester) async {
+    final createdAt = DateTime(2026, 3, 1).toIso8601String();
+    final updatedAt = DateTime(2026, 3, 2).toIso8601String();
+
+    SharedPreferences.setMockInitialValues({
+      'workspace_provider': provider,
+      'workspace_directory': directory,
+      storageKey: jsonEncode([
+        {
+          'id': 'stable-1',
+          'title': 'Stable Page',
+          'htmlContent': '<p>Stable content</p>',
+          'createdAt': createdAt,
+          'updatedAt': updatedAt,
+        },
+      ]),
+    });
+
+    await pumpWithSize(tester, size: const Size(390, 844));
+    await pumpUntilVisible(tester, find.text('Stable Page'));
+
+    await tester.tap(find.byIcon(Icons.more_vert));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Import JSON'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField).last, '{not-valid-json');
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, 'Import'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Import failed: invalid backup JSON.'), findsOneWidget);
+    expect(find.text('Stable Page'), findsOneWidget);
+
+    final preferences = await SharedPreferences.getInstance();
+    final persistedRaw = preferences.getString(storageKey);
+    expect(persistedRaw, isNotNull);
+
+    final persisted = jsonDecode(persistedRaw!) as List<dynamic>;
+    expect(persisted.length, 1);
+    expect((persisted.first as Map<String, dynamic>)['title'], 'Stable Page');
   });
 }

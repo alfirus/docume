@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shadcn_flutter/shadcn_flutter.dart';
 
 import '../models/workspace_config.dart';
 import '../services/workspace_connector_service.dart';
@@ -16,6 +17,8 @@ class WorkspaceSetupScreen extends StatefulWidget {
 }
 
 class _WorkspaceSetupScreenState extends State<WorkspaceSetupScreen> {
+  static const _enabledProviders = [WorkspaceProvider.local];
+
   WorkspaceProvider _provider = WorkspaceProvider.local;
   final WorkspaceConnectorService _connectorService = WorkspaceConnectorService();
   final TextEditingController _directoryController = TextEditingController();
@@ -53,6 +56,15 @@ class _WorkspaceSetupScreenState extends State<WorkspaceSetupScreen> {
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(error.message)),
+      );
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to connect provider. Check your provider setup and try again.'),
+        ),
       );
     }
   }
@@ -118,11 +130,15 @@ class _WorkspaceSetupScreenState extends State<WorkspaceSetupScreen> {
             const Text(
               'For first-time installation, select where Docume workspace is located.',
             ),
+            const SizedBox(height: 8),
+            const Text(
+              'Google Drive, iCloud, and Synology are temporarily disabled.',
+            ),
             const SizedBox(height: 12),
             SegmentedButton<WorkspaceProvider>(
               showSelectedIcon: false,
               segments: [
-                for (final option in WorkspaceProvider.values)
+                for (final option in _enabledProviders)
                   ButtonSegment<WorkspaceProvider>(
                     value: option,
                     label: Text(option.label),
