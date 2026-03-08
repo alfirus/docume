@@ -1701,11 +1701,13 @@ class _PageListScreenState extends State<PageListScreen> {
                             'Select a page to view its HTML content.',
                           ),
                         )
-                      : SingleChildScrollView(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
+                      : Align(
+                          alignment: Alignment.topLeft,
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
                               Row(
                                 children: [
                                   Expanded(
@@ -1739,6 +1741,7 @@ class _PageListScreenState extends State<PageListScreen> {
                             ],
                           ),
                         ),
+                          ),
                 ),
               ],
             ),
