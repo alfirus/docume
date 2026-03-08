@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -21,6 +22,14 @@ class DocumeApp extends StatefulWidget {
 
 class _DocumeAppState extends State<DocumeApp> {
   final WorkspaceService _workspaceService = WorkspaceService();
+  final shad.ThemeData _lightShadTheme = shad.ThemeData(
+    colorScheme: shad.LegacyColorSchemes.zinc(shad.ThemeMode.light),
+    radius: 0.5,
+  );
+  final shad.ThemeData _darkShadTheme = shad.ThemeData(
+    colorScheme: shad.LegacyColorSchemes.zinc(shad.ThemeMode.dark),
+    radius: 0.5,
+  );
   WorkspaceConfig? _workspaceConfig;
   ThemeMode _themeMode = ThemeMode.light;
   bool _isLoading = true;
@@ -64,8 +73,24 @@ class _DocumeAppState extends State<DocumeApp> {
     });
   }
 
+  ThemeData _buildMaterialTheme(shad.ThemeData activeTheme) {
+    return ThemeData.from(
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: activeTheme.colorScheme.primary,
+        brightness: activeTheme.brightness,
+        surface: activeTheme.colorScheme.background,
+        primary: activeTheme.colorScheme.primary,
+        secondary: activeTheme.colorScheme.secondary,
+        error: activeTheme.colorScheme.destructive,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isDark = _themeMode == ThemeMode.dark;
+    final activeShadTheme = isDark ? _darkShadTheme : _lightShadTheme;
+
     return shad.ShadcnApp(
       title: 'Docume',
       localizationsDelegates: const [
@@ -75,16 +100,17 @@ class _DocumeAppState extends State<DocumeApp> {
         GlobalCupertinoLocalizations.delegate,
       ],
       supportedLocales: FlutterQuillLocalizations.supportedLocales,
-      themeMode: _themeMode == ThemeMode.dark
-          ? shad.ThemeMode.dark
-          : shad.ThemeMode.light,
-      theme: shad.ThemeData(
-        colorScheme: shad.LegacyColorSchemes.zinc(shad.ThemeMode.light),
-        radius: 0.5,
-      ),
-      darkTheme: shad.ThemeData(
-        colorScheme: shad.LegacyColorSchemes.zinc(shad.ThemeMode.dark),
-        radius: 0.5,
+      themeMode: isDark ? shad.ThemeMode.dark : shad.ThemeMode.light,
+      theme: _lightShadTheme,
+      darkTheme: _darkShadTheme,
+      materialTheme: _buildMaterialTheme(activeShadTheme),
+      cupertinoTheme: CupertinoThemeData(
+        brightness: activeShadTheme.brightness,
+        primaryColor: activeShadTheme.colorScheme.primary,
+        barBackgroundColor: activeShadTheme.colorScheme.accent,
+        scaffoldBackgroundColor: activeShadTheme.colorScheme.background,
+        applyThemeToAll: true,
+        primaryContrastingColor: activeShadTheme.colorScheme.primaryForeground,
       ),
       home: _isLoading
           ? const Scaffold(body: Center(child: CircularProgressIndicator()))

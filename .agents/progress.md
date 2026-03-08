@@ -163,6 +163,12 @@
 +  * Maintained Material components for structural elements (Scaffold, AppBar, etc.) for compatibility
 +  * App now uses shadcn's clean, modern design language while preserving full functionality
 +
+- **Fixed light/dark theme toggle behavior**:
+  * Root cause: `ShadcnApp` theme mode switched shadcn components, but Material/Cupertino widgets remained on static light theme
+  * Added active Material/Cupertino theme bridging in `lib/main.dart` based on selected light/dark mode
+  * Added widget regression test covering toggle UI update and persisted `theme_mode` preference
+  * Test baseline updated to 45 passing tests
+
 
 ## Architecture Notes
 - Data model: `lib/models/doc_page.dart`
@@ -185,7 +191,7 @@
 ## Suggested Next Steps
 1. ~~Add rich text editor (WYSIWYG) mode for better content authoring~~ ✅ COMPLETED
 2. ~~Use https://pub.dev/packages/shadcn_flutter as default UI style~~ ✅ COMPLETED
-3. ~~Fix remaining failing tests~~ ✅ COMPLETED (all 44 tests passing)
+3. ~~Fix remaining failing tests~~ ✅ COMPLETED (all 45 tests passing)
 4. Implement page templates for faster page creation
 5. Add page tagging/categorization system
 6. Implement full-text search across all pages and providers
