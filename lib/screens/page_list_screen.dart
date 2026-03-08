@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -11,6 +12,7 @@ import '../models/doc_page.dart';
 import '../models/page_template.dart';
 import '../models/workspace_config.dart';
 import '../services/conflict_resolution_service.dart';
+import '../services/error_logging_service.dart';
 import '../services/export_service.dart';
 import '../services/page_repository.dart';
 import '../services/page_template_service.dart';
@@ -75,6 +77,7 @@ class _PageListScreenState extends State<PageListScreen> {
   @override
   void initState() {
     super.initState();
+    unawaited(ErrorLoggingService().initialize(widget.workspaceConfig.directory));
     _repository = PageRepository(workspaceConfig: widget.workspaceConfig);
     _templateService = PageTemplateService(
       namespace: widget.workspaceConfig.namespace,
@@ -540,7 +543,12 @@ class _PageListScreenState extends State<PageListScreen> {
       
       // Clean up temp file
       await File(tempPath).delete();
-    } catch (e) {
+    } catch (e, stackTrace) {
+      await ErrorLoggingService().logError(
+        e,
+        stackTrace,
+        context: 'Bulk export to PDF failed',
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Export failed: $e')),
@@ -590,7 +598,12 @@ class _PageListScreenState extends State<PageListScreen> {
       
       // Clean up temp file
       await File(tempPath).delete();
-    } catch (e) {
+    } catch (e, stackTrace) {
+      await ErrorLoggingService().logError(
+        e,
+        stackTrace,
+        context: 'Bulk export to DOCX failed',
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Export failed: $e')),
@@ -644,7 +657,12 @@ class _PageListScreenState extends State<PageListScreen> {
       
       // Clean up temp file
       await File(tempPath).delete();
-    } catch (e) {
+    } catch (e, stackTrace) {
+      await ErrorLoggingService().logError(
+        e,
+        stackTrace,
+        context: 'Bulk export to EPUB failed',
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Export failed: $e')),
@@ -786,6 +804,26 @@ class _PageListScreenState extends State<PageListScreen> {
               ),
               const SizedBox(height: 16),
               const Text(
+                'Logs',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Icon(Icons.description_outlined, size: 18),
+                  const SizedBox(width: 8),
+                  const Expanded(child: Text('Inspect application error log.')),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      _showErrorLogDialog();
+                    },
+                    child: const Text('View error.log'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              const Text(
                 'Danger Zone',
                 style: TextStyle(fontWeight: FontWeight.w600),
               ),
@@ -806,6 +844,103 @@ class _PageListScreenState extends State<PageListScreen> {
                 _confirmAndResetWorkspace();
               },
               child: const Text('Reset App'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _showErrorLogDialog() async {
+    final logger = ErrorLoggingService();
+    final logPath = await logger.getLogFilePath();
+    final logs = await logger.readLogs();
+
+    if (!mounted) {
+      return;
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('error.log'),
+          content: SizedBox(
+            width: 680,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  logPath == null ? 'Path unavailable' : 'Path: $logPath',
+                  style: const TextStyle(fontSize: 12),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  height: 320,
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey.shade300),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: SingleChildScrollView(
+                    child: SelectableText(
+                      (logs == null || logs.trim().isEmpty)
+                          ? 'No errors logged yet.'
+                          : logs,
+                      style: const TextStyle(fontFamily: 'monospace'),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                final textToCopy = (logs == null || logs.trim().isEmpty)
+                    ? ''
+                    : logs;
+                final messenger = ScaffoldMessenger.of(this.context);
+
+                if (textToCopy.isEmpty) {
+                  messenger.showSnackBar(
+                    const SnackBar(content: Text('No log content to copy.')),
+                  );
+                  return;
+                }
+
+                await Clipboard.setData(ClipboardData(text: textToCopy));
+                if (!mounted) {
+                  return;
+                }
+                messenger.showSnackBar(
+                  const SnackBar(content: Text('error.log copied to clipboard.')),
+                );
+              },
+              child: const Text('Copy log'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
+            TextButton(
+              onPressed: () async {
+                final navigator = Navigator.of(context);
+                final messenger = ScaffoldMessenger.of(this.context);
+                await logger.clearLogs();
+                if (!mounted) {
+                  return;
+                }
+                navigator.pop();
+                messenger.showSnackBar(
+                  const SnackBar(content: Text('error.log cleared.')),
+                );
+              },
+              child: const Text('Clear log'),
             ),
           ],
         );

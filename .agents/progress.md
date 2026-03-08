@@ -288,6 +288,30 @@
     - Filename sanitization tests
     - Edge case handling (empty content, special characters, line breaks)
   * Regression check: `flutter test` passes (72/72 - added 14 new tests).
+- **Added global error logging to error.log in workspace**:
+  * Created `ErrorLoggingService` (`lib/services/error_logging_service.dart`) to capture and log errors to file.
+  * Integrated with Flutter error handlers in `lib/main.dart`:
+    - `FlutterError.onError` for Flutter framework errors
+    - `PlatformDispatcher.instance.onError` for platform-specific errors
+    - `runZonedGuarded` to catch unhandled async errors
+  * Error log features:
+    - Writes to `error.log` file in workspace directory
+    - Supports different workspace providers (Local, Google Drive, iCloud, Synology)
+    - Includes timestamps, error messages, stack traces, and optional context
+    - Supports logging info/warning messages
+    - Automatic log rotation when file exceeds 5MB or 1000 lines
+    - Can clear logs and read current logs
+  * Service initialized on app startup with workspace path.
+  * Added comprehensive tests (`test/error_logging_service_test.dart`):
+    - Error logging with and without stack traces
+    - Message logging with custom levels
+    - Flutter error details logging
+    - Log file creation and management
+    - Log rotation
+    - Edge cases (uninitialized state, invalid paths)
+  * Fixed export failure logging gap: caught export exceptions (PDF/DOCX/EPUB, single + bulk) now explicitly call `ErrorLoggingService().logError(...)` so failures are persisted to `error.log`.
+  * Added regression tests (`test/export_error_logging_test.dart`) to verify caught PDF export failures are written/appended to `error.log`.
+  * Regression check: `flutter test` passes (89/89).
 
 ## Architecture Notes
 - Data model: `lib/models/doc_page.dart`
@@ -302,6 +326,7 @@
 - iCloud service: `lib/services/icloud_service.dart` (iCloud path mapping + individual page file I/O in `pages/` directory)
 - Synology service: `lib/services/synology_drive_service.dart` (Synology path mapping + individual page file I/O in `pages/` directory)
 - Export service: `lib/services/export_service.dart` (PDF, DOCX, and EPUB export for single pages and bulk export)
+- Error logging service: `lib/services/error_logging_service.dart` (captures all errors and logs to `error.log` in workspace directory)
 - Quill HTML converter: `lib/utils/quill_html_converter.dart` (bidirectional HTML and Quill Delta conversion)
 - Screens:
   - `lib/screens/page_list_screen.dart`

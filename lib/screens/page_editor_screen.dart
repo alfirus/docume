@@ -9,6 +9,7 @@ import 'package:shadcn_flutter/shadcn_flutter.dart' as shad;
 
 import '../models/doc_page.dart';
 import '../models/page_template.dart';
+import '../services/error_logging_service.dart';
 import '../services/export_service.dart';
 import '../services/page_template_service.dart';
 import '../utils/html_validator.dart';
@@ -713,7 +714,12 @@ class _PageEditorScreenState extends State<PageEditorScreen> {
       
       // Clean up temp file
       await File(tempPath).delete();
-    } catch (e) {
+    } catch (e, stackTrace) {
+      await ErrorLoggingService().logError(
+        e,
+        stackTrace,
+        context: 'Single page export to PDF failed',
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Export failed: $e')),
@@ -759,7 +765,12 @@ class _PageEditorScreenState extends State<PageEditorScreen> {
       
       // Clean up temp file
       await File(tempPath).delete();
-    } catch (e) {
+    } catch (e, stackTrace) {
+      await ErrorLoggingService().logError(
+        e,
+        stackTrace,
+        context: 'Single page export to DOCX failed',
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Export failed: $e')),
@@ -805,7 +816,12 @@ class _PageEditorScreenState extends State<PageEditorScreen> {
       
       // Clean up temp file
       await File(tempPath).delete();
-    } catch (e) {
+    } catch (e, stackTrace) {
+      await ErrorLoggingService().logError(
+        e,
+        stackTrace,
+        context: 'Single page export to EPUB failed',
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Export failed: $e')),

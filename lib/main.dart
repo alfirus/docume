@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:ui';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
@@ -7,11 +10,33 @@ import 'package:shadcn_flutter/shadcn_flutter.dart' as shad;
 
 import 'models/workspace_config.dart';
 import 'screens/workspace_setup_screen.dart';
+import 'services/error_logging_service.dart';
 import 'services/workspace_service.dart';
 import 'screens/page_list_screen.dart';
 
+// Global error logging service instance
+final errorLogger = ErrorLoggingService();
+
 void main() {
-  runApp(const DocumeApp());
+  // Set up error handlers before running the app
+  runZonedGuarded(() {
+    // Handle Flutter framework errors
+    FlutterError.onError = (FlutterErrorDetails details) {
+      FlutterError.presentError(details);
+      errorLogger.logFlutterError(details);
+    };
+
+    // Handle platform errors (errors outside Flutter framework)
+    PlatformDispatcher.instance.onError = (error, stack) {
+      errorLogger.logError(error, stack, context: 'Platform error');
+      return true;
+    };
+
+    runApp(const DocumeApp());
+  }, (error, stackTrace) {
+    // Catch any errors that escape the Flutter framework
+    errorLogger.logError(error, stackTrace, context: 'Unhandled async error');
+  });
 }
 
 class DocumeApp extends StatefulWidget {
@@ -44,6 +69,10 @@ class _DocumeAppState extends State<DocumeApp> {
   Future<void> _loadWorkspace() async {
     final config = await _workspaceService.getWorkspaceConfig();
     final themeMode = await _workspaceService.getThemeMode();
+    
+    // Initialize error logging with workspace path
+    await errorLogger.initialize(config?.directory);
+    
     if (!mounted) {
       return;
     }
@@ -56,6 +85,10 @@ class _DocumeAppState extends State<DocumeApp> {
 
   Future<void> _completeSetup(WorkspaceConfig config) async {
     await _workspaceService.saveWorkspaceConfig(config);
+    
+    // Initialize error logging with new workspace path
+    await errorLogger.initialize(config.directory);
+    
     if (!mounted) {
       return;
     }
