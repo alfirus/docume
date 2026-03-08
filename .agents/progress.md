@@ -3,6 +3,12 @@
 ## Current Status (2026-03-08)
 
 ### Completed
+- **Fixed single-page PDF export PathNotFoundException on macOS sandbox cache path**:
+  * Root cause: export writes assumed output parent directories already existed.
+  * Added `ExportService._writeExportFile(...)` to create parent directories recursively before `writeAsBytes`.
+  * Routed PDF/DOCX/EPUB writes through the shared helper.
+  * Added regression test `export creates missing parent directories` in `test/export_service_test.dart`.
+  * Verification: `flutter test test/export_service_test.dart` passes.
 - Scaffolded Flutter mobile project (Android + iOS).
 - Built MVP CRUD flow for pages:
   - List pages

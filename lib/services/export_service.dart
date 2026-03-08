@@ -59,9 +59,7 @@ class ExportService {
       ),
     );
     
-    final file = File(outputPath);
-    await file.writeAsBytes(await pdf.save());
-    return file;
+    return _writeExportFile(outputPath, await pdf.save());
   }
 
   /// Export multiple pages to a single PDF
@@ -118,9 +116,7 @@ class ExportService {
       );
     }
     
-    final file = File(outputPath);
-    await file.writeAsBytes(await pdf.save());
-    return file;
+    return _writeExportFile(outputPath, await pdf.save());
   }
 
   /// Export a single page to EPUB format
@@ -188,9 +184,7 @@ class ExportService {
     final zipEncoder = ZipEncoder();
     final zipData = zipEncoder.encode(archive);
     
-    final file = File(outputPath);
-    await file.writeAsBytes(zipData!);
-    return file;
+    return _writeExportFile(outputPath, zipData!);
   }
 
   /// Export a single page to DOCX format
@@ -235,9 +229,7 @@ class ExportService {
     final zipEncoder = ZipEncoder();
     final zipData = zipEncoder.encode(archive);
     
-    final file = File(outputPath);
-    await file.writeAsBytes(zipData!);
-    return file;
+    return _writeExportFile(outputPath, zipData!);
   }
 
   /// Get a suggested filename for export
@@ -256,6 +248,16 @@ class ExportService {
   }
 
   // Helper methods
+
+  Future<File> _writeExportFile(String outputPath, List<int> bytes) async {
+    final file = File(outputPath);
+    final parentDir = file.parent;
+    if (!await parentDir.exists()) {
+      await parentDir.create(recursive: true);
+    }
+    await file.writeAsBytes(bytes);
+    return file;
+  }
 
   String _htmlToPlainText(String html) {
     return html

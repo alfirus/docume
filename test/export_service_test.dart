@@ -62,6 +62,21 @@ void main() {
       expect(header, equals('%PDF-'));
     });
 
+    test('export creates missing parent directories', () async {
+      final nestedPdfPath = '${tempDir.path}/nested/dir/test.pdf';
+      final nestedDocxPath = '${tempDir.path}/nested/dir/test.docx';
+      final nestedEpubPath = '${tempDir.path}/nested/dir/test.epub';
+
+      final pdfFile = await exportService.exportPageToPdf(testPage, nestedPdfPath);
+      final docxFile = await exportService.exportPageToDocx(testPage, nestedDocxPath);
+      final epubFile = await exportService.exportPageToEpub(testPage, nestedEpubPath);
+
+      expect(pdfFile.existsSync(), isTrue);
+      expect(docxFile.existsSync(), isTrue);
+      expect(epubFile.existsSync(), isTrue);
+      expect(Directory('${tempDir.path}/nested/dir').existsSync(), isTrue);
+    });
+
     test('exportPagesToPdf creates valid PDF with multiple pages', () async {
       final outputPath = '${tempDir.path}/test_multiple.pdf';
       
