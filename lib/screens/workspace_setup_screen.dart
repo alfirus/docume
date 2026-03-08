@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:shadcn_flutter/shadcn_flutter.dart';
+import 'package:shadcn_flutter/shadcn_flutter.dart' as shad;
 
 import '../models/workspace_config.dart';
 import '../services/workspace_connector_service.dart';
@@ -152,34 +152,37 @@ class _WorkspaceSetupScreenState extends State<WorkspaceSetupScreen> {
               },
             ),
             const SizedBox(height: 12),
-            TextField(
+            shad.TextField(
               controller: _directoryController,
-              decoration: const InputDecoration(
-                labelText: 'Workspace Directory',
-                hintText: '/Users/name/DocumeWorkspace',
-                border: OutlineInputBorder(),
-              ),
+              placeholder: const Text('/Users/name/DocumeWorkspace'),
+            ),
+            const Padding(
+              padding: EdgeInsets.only(bottom: 4.0),
+              child: Text('Workspace Directory', style: TextStyle(fontSize: 12)),
             ),
             const SizedBox(height: 12),
             Row(
               children: [
-                OutlinedButton.icon(
+                shad.OutlineButton(
                   onPressed: _connectProvider,
-                  icon: const Icon(Icons.folder_open),
-                  label: Text(_providerActionLabel()),
+                  leading: const Icon(Icons.folder_open, size: 16),
+                  child: Text(_providerActionLabel()),
                 ),
               ],
             ),
             const SizedBox(height: 20),
-            FilledButton(
-              onPressed: _isSaving ? null : _saveSetup,
-              child: _isSaving
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Continue'),
+            SizedBox(
+              width: double.infinity,
+              child: shad.PrimaryButton(
+                onPressed: _isSaving ? null : _saveSetup,
+                child: _isSaving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Continue'),
+              ),
             ),
           ],
         ),

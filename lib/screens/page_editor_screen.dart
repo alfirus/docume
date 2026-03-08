@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
+import 'package:shadcn_flutter/shadcn_flutter.dart' as shad;
 
 import '../models/doc_page.dart';
 import '../utils/html_validator.dart';
@@ -187,8 +188,9 @@ class _PageEditorScreenState extends State<PageEditorScreen> {
     required String label,
     required VoidCallback onPressed,
   }) {
-    return OutlinedButton(
+    return shad.OutlineButton(
       onPressed: onPressed,
+      density: shad.ButtonDensity.compact,
       child: Text(label),
     );
   }
@@ -204,9 +206,13 @@ class _PageEditorScreenState extends State<PageEditorScreen> {
             onPressed: _toggleEditorMode,
             tooltip: _editorMode == EditorMode.wysiwyg ? 'HTML Mode' : 'WYSIWYG Mode',
           ),
-          TextButton(
-            onPressed: _save,
-            child: const Text('Save'),
+          Padding(
+            padding: const EdgeInsets.only(right: 8.0),
+            child: shad.PrimaryButton(
+              onPressed: _save,
+              density: shad.ButtonDensity.compact,
+              child: const Text('Save'),
+            ),
           ),
         ],
       ),

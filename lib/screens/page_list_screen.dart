@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
+import 'package:shadcn_flutter/shadcn_flutter.dart' as shad;
 
 import '../models/doc_page.dart';
 import '../models/workspace_config.dart';

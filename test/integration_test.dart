@@ -1,8 +1,11 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shadcn_flutter/shadcn_flutter.dart' as shad;
 
 import 'package:docume/main.dart';
 
@@ -62,6 +65,12 @@ void main() {
 
       expect(find.text('New Page'), findsOneWidget);
 
+      // Toggle to HTML mode for easier testing - use tooltip to find
+      final toggleButton = find.byTooltip('HTML Mode');
+      expect(toggleButton, findsOneWidget);
+      await tester.tap(toggleButton);
+      await tester.pumpAndSettle();
+
       // Fill in title and content
       final titleField = find.byType(TextField).first;
       await tester.enterText(titleField, 'Integration Test Page');
@@ -71,8 +80,8 @@ void main() {
       await tester.enterText(contentField, '<p>Test content</p>');
       await tester.pumpAndSettle();
 
-      // Save using TextButton
-      final saveButton = find.widgetWithText(TextButton, 'Save');
+      // Save
+      final saveButton = find.widgetWithText(shad.PrimaryButton, 'Save');
       expect(saveButton, findsOneWidget);
       await tester.tap(saveButton);
       await tester.pumpAndSettle();
@@ -154,6 +163,12 @@ void main() {
 
       expect(find.text('New Page'), findsOneWidget);
 
+      // Toggle to HTML mode using tooltip - find the HTML Mode button in editor
+      final toggleButton = find.byTooltip('HTML Mode');
+      expect(toggleButton, findsOneWidget);
+      await tester.tap(toggleButton);
+      await tester.pumpAndSettle();
+
       // Fill in content
       await tester.enterText(find.byType(TextField).first, 'Desktop Page');
       await tester.pumpAndSettle();
@@ -161,7 +176,8 @@ void main() {
       await tester.pumpAndSettle();
 
       // Save
-      final saveButton = find.widgetWithText(TextButton, 'Save');
+      final saveButton = find.widgetWithText(shad.PrimaryButton, 'Save');
+      expect(saveButton, findsOneWidget);
       await tester.tap(saveButton);
       await tester.pumpAndSettle();
 

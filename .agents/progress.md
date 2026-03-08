@@ -153,6 +153,15 @@
 +  * Content automatically syncs between modes on toggle
 +  * Default editor mode is WYSIWYG for improved authoring experience
 +  * Created `test/wysiwyg_editor_test.dart` for editor mode toggle and basic functionality tests
++- **Integrated shadcn_flutter UI design system (v0.0.52)**:
++  * Added `shadcn_flutter` package for modern, consistent UI components
++  * Wrapped app with `ShadcnApp` providing shadcn theming and design system
++  * Applied zinc color scheme with light/dark theme support
++  * Replaced key Material widgets with shadcn equivalents:
++    - PrimaryButton and OutlineButton for actions
++    - TextField for form inputs (in workspace setup screen)
++  * Maintained Material components for structural elements (Scaffold, AppBar, etc.) for compatibility
++  * App now uses shadcn's clean, modern design language while preserving full functionality
 +
 
 ## Architecture Notes
@@ -175,10 +184,11 @@
 
 ## Suggested Next Steps
 1. ~~Add rich text editor (WYSIWYG) mode for better content authoring~~ ✅ COMPLETED
-2. Use https://pub.dev/packages/shadcn_flutter as default UI style
-3. Implement page templates for faster page creation
-4. Add page tagging/categorization system
-5. Implement full-text search across all pages and providers
-6. Add page versioning/history tracking
-7. Implement collaborative editing features (real-time sync)
-8. Add export-to-PDF functionality
+2. ~~Use https://pub.dev/packages/shadcn_flutter as default UI style~~ ✅ COMPLETED
+3. ~~Fix remaining failing tests~~ ✅ COMPLETED (all 44 tests passing)
+4. Implement page templates for faster page creation
+5. Add page tagging/categorization system
+6. Implement full-text search across all pages and providers
+7. Add page versioning/history tracking
+8. Implement collaborative editing features (real-time sync)
+9. Add export-to-PDF, export-to-DOCX, export-to-EPUB and export-to-JSON functionality

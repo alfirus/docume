@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:shadcn_flutter/shadcn_flutter.dart';
+import 'package:shadcn_flutter/shadcn_flutter.dart' as shad;
 
 import 'models/workspace_config.dart';
 import 'screens/workspace_setup_screen.dart';
@@ -66,7 +66,7 @@ class _DocumeAppState extends State<DocumeApp> {
 
   @override
   Widget build(BuildContext context) {
-    return ShadApp.material(
+    return shad.ShadcnApp(
       title: 'Docume',
       localizationsDelegates: const [
         ...FlutterQuillLocalizations.localizationsDelegates,
@@ -75,14 +75,16 @@ class _DocumeAppState extends State<DocumeApp> {
         GlobalCupertinoLocalizations.delegate,
       ],
       supportedLocales: FlutterQuillLocalizations.supportedLocales,
-      themeMode: _themeMode,
-      theme: ShadThemeData(
-        colorScheme: const ShadSlateColorScheme.light(),
-        brightness: Brightness.light,
+      themeMode: _themeMode == ThemeMode.dark
+          ? shad.ThemeMode.dark
+          : shad.ThemeMode.light,
+      theme: shad.ThemeData(
+        colorScheme: shad.LegacyColorSchemes.zinc(shad.ThemeMode.light),
+        radius: 0.5,
       ),
-      darkTheme: ShadThemeData(
-        colorScheme: const ShadSlateColorScheme.dark(),
-        brightness: Brightness.dark,
+      darkTheme: shad.ThemeData(
+        colorScheme: shad.LegacyColorSchemes.zinc(shad.ThemeMode.dark),
+        radius: 0.5,
       ),
       home: _isLoading
           ? const Scaffold(body: Center(child: CircularProgressIndicator()))
