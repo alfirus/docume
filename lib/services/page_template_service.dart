@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
 
 import '../models/page_template.dart';
 
@@ -34,6 +35,20 @@ class PageTemplateService {
     }
 
     await _writeCustomTemplates(custom);
+  }
+
+  Future<void> saveTemplateFromData({
+    required String name,
+    required String htmlContent,
+  }) async {
+    await saveTemplate(
+      PageTemplate(
+        id: const Uuid().v4(),
+        name: name.trim(),
+        htmlContent: htmlContent,
+        isBuiltIn: false,
+      ),
+    );
   }
 
   Future<void> deleteTemplate(String templateId) async {

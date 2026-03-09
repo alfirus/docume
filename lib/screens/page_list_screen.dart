@@ -9,8 +9,13 @@ import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../models/doc_page.dart';
+import '../models/ai_command.dart';
 import '../models/page_template.dart';
 import '../models/workspace_config.dart';
+import '../services/ai_audit_service.dart';
+import '../services/ai_command_service.dart';
+import '../services/ai_provider_client.dart';
+import '../services/ai_settings_service.dart';
 import '../services/conflict_resolution_service.dart';
 import '../services/error_logging_service.dart';
 import '../services/export_service.dart';
@@ -63,6 +68,10 @@ class _PageListScreenState extends State<PageListScreen> {
 
   late final PageRepository _repository;
   late final PageTemplateService _templateService;
+  final AiSettingsService _aiSettingsService = AiSettingsService();
+  final AiCommandService _aiCommandService = AiCommandService();
+  final AiProviderClient _aiProviderClient = const AiProviderClient();
+  final AiAuditService _aiAuditService = AiAuditService();
   final ConflictResolutionService _conflictResolutionService =
       ConflictResolutionService();
   final TextEditingController _searchController = TextEditingController();
@@ -73,6 +82,7 @@ class _PageListScreenState extends State<PageListScreen> {
   String? _selectedPageId;
   String? _selectedTag;
   final Set<String> _expandedPageIds = {};
+  bool _isAiBusy = false;
 
   @override
   void initState() {
@@ -765,6 +775,526 @@ class _PageListScreenState extends State<PageListScreen> {
     }
   }
 
+  Future<void> _openAiCommandDialog() async {
+    if (_isAiBusy) {
+      return;
+    }
+
+    final promptController = TextEditingController();
+    var selectedProvider = await _aiSettingsService.getSelectedProvider();
+
+    if (!mounted) {
+      promptController.dispose();
+      return;
+    }
+
+    final submitted = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              title: const Text('AI Command Center'),
+              content: SizedBox(
+                width: 620,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Provider'),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<AiProvider>(
+                      value: selectedProvider,
+                      items: AiProvider.values
+                          .map(
+                            (provider) => DropdownMenuItem(
+                              value: provider,
+                              child: Text(provider.label),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) {
+                        if (value == null) {
+                          return;
+                        }
+                        setStateDialog(() {
+                          selectedProvider = value;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    const Text('Command'),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: promptController,
+                      minLines: 4,
+                      maxLines: 8,
+                      decoration: const InputDecoration(
+                        hintText:
+                            'Example: Create a project status page with sections for risks and next steps.',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'AI changes require approval before saving.',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () => _openAiSettingsDialog(provider: selectedProvider),
+                  child: const Text('Configure AI'),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: const Text('Generate Plan'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    final prompt = promptController.text.trim();
+    promptController.dispose();
+
+    if (submitted != true || prompt.isEmpty) {
+      return;
+    }
+
+    final settings = await _aiSettingsService.getProviderSettings(
+      selectedProvider,
+    );
+    if (!settings.isConfigured) {
+      if (!mounted) {
+        return;
+      }
+      final missingHint = settings.requiresModel
+          ? 'Configure endpoint, model, and API key for this AI provider first.'
+          : 'Configure endpoint and API key for this AI provider first.';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(missingHint)),
+      );
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _isAiBusy = true;
+      });
+    }
+
+    try {
+      await _aiSettingsService.saveSelectedProvider(selectedProvider);
+      await _aiAuditService.logEvent(
+        workspacePath: widget.workspaceConfig.directory,
+        phase: 'plan_request',
+        provider: selectedProvider,
+        prompt: prompt,
+      );
+
+      final plan = await _aiCommandService.buildPlan(
+        settings: settings,
+        prompt: prompt,
+        pages: _pages,
+      );
+
+      await _aiAuditService.logEvent(
+        workspacePath: widget.workspaceConfig.directory,
+        phase: 'plan_generated',
+        provider: selectedProvider,
+        prompt: prompt,
+        summary: plan.summary,
+        actions: plan.actions,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      final approved = await _showAiApprovalDialog(plan);
+      if (approved != true) {
+        await _aiAuditService.logEvent(
+          workspacePath: widget.workspaceConfig.directory,
+          phase: 'plan_rejected',
+          provider: selectedProvider,
+          prompt: prompt,
+          summary: plan.summary,
+          actions: plan.actions,
+        );
+        return;
+      }
+
+      final updated = await _aiCommandService.applyPlan(
+        plan: plan,
+        pages: _pages,
+        templateService: _templateService,
+        onExportAll: _exportAllByAiFormat,
+      );
+
+      _sortPages(updated);
+      await _repository.savePages(updated);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _pages = updated;
+        if (_selectedPageId == null && updated.isNotEmpty) {
+          _selectedPageId = updated.first.id;
+        }
+      });
+
+      await _aiAuditService.logEvent(
+        workspacePath: widget.workspaceConfig.directory,
+        phase: 'plan_applied',
+        provider: selectedProvider,
+        prompt: prompt,
+        summary: plan.summary,
+        actions: plan.actions,
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Applied ${plan.actions.length} AI action(s).')),
+      );
+    } catch (error, stackTrace) {
+      await ErrorLoggingService().logError(
+        error,
+        stackTrace,
+        context: 'AI command execution failed',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('AI command failed: $error')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isAiBusy = false;
+        });
+      }
+    }
+  }
+
+  Future<bool?> _showAiApprovalDialog(AiCommandPlan plan) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Approve AI Plan'),
+          content: SizedBox(
+            width: 700,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(plan.summary),
+                const SizedBox(height: 12),
+                const Text(
+                  'Actions',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 260),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: plan.actions.length,
+                    itemBuilder: (context, index) {
+                      final action = plan.actions[index];
+                      return ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(action.toHumanLabel()),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Changes are only applied after explicit approval.',
+                  style: TextStyle(fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Reject'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Approve & Apply'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _openAiSettingsDialog({AiProvider? provider}) async {
+    var selected = provider ?? await _aiSettingsService.getSelectedProvider();
+    var selectedSettings = await _aiSettingsService.getProviderSettings(selected);
+
+    final endpointController = TextEditingController(
+      text: selectedSettings.endpoint,
+    );
+    final modelController = TextEditingController(text: selectedSettings.model);
+    final apiKeyController = TextEditingController(text: selectedSettings.apiKey);
+
+    if (!mounted) {
+      endpointController.dispose();
+      modelController.dispose();
+      apiKeyController.dispose();
+      return;
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              title: const Text('AI Provider Settings'),
+              content: SizedBox(
+                width: 640,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    DropdownButtonFormField<AiProvider>(
+                      value: selected,
+                      items: AiProvider.values
+                          .map(
+                            (entry) => DropdownMenuItem(
+                              value: entry,
+                              child: Text(entry.label),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) async {
+                        if (value == null) {
+                          return;
+                        }
+                        final loaded = await _aiSettingsService
+                            .getProviderSettings(value);
+                        setStateDialog(() {
+                          selected = value;
+                          endpointController.text = loaded.endpoint;
+                          modelController.text = loaded.model;
+                          apiKeyController.text = loaded.apiKey;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: endpointController,
+                      decoration: const InputDecoration(
+                        labelText: 'Endpoint URL',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: modelController,
+                      enabled: selected != AiProvider.openclaw,
+                      decoration: const InputDecoration(
+                        labelText: 'Model',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: apiKeyController,
+                      obscureText: true,
+                      decoration: InputDecoration(
+                        labelText: selected == AiProvider.openclaw
+                            ? 'Gateway Key'
+                            : 'API Key',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      selected == AiProvider.openclaw
+                          ? 'OpenClaw uses WebSocket transport and does not require a model. Set a ws:// or wss:// endpoint.'
+                          : 'API keys are stored using secure storage. Endpoint, model, and API key are required.',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Close'),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    final settings = AiProviderSettings(
+                      provider: selected,
+                      endpoint: endpointController.text.trim(),
+                      model: modelController.text.trim(),
+                      apiKey: apiKeyController.text.trim(),
+                    );
+
+                    try {
+                      await _aiProviderClient.testConnection(
+                        settings: settings,
+                      );
+                      if (!mounted) {
+                        return;
+                      }
+                      ScaffoldMessenger.of(this.context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            '${selected.label} endpoint is reachable.',
+                          ),
+                        ),
+                      );
+                    } catch (error) {
+                      if (!mounted) {
+                        return;
+                      }
+                      ScaffoldMessenger.of(this.context).showSnackBar(
+                        SnackBar(
+                          content: Text('Connection test failed: $error'),
+                        ),
+                      );
+                    }
+                  },
+                  child: const Text('Test Connection'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    final settings = AiProviderSettings(
+                      provider: selected,
+                      endpoint: endpointController.text.trim(),
+                      model: modelController.text.trim(),
+                      apiKey: apiKeyController.text.trim(),
+                    );
+                    await _aiSettingsService.saveProviderSettings(settings);
+                    await _aiSettingsService.saveSelectedProvider(selected);
+                    if (!mounted) {
+                      return;
+                    }
+                    Navigator.of(context).pop();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('${selected.label} settings saved.')),
+                    );
+                  },
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    endpointController.dispose();
+    modelController.dispose();
+    apiKeyController.dispose();
+  }
+
+  Future<void> _showAiLogDialog() async {
+    String? logs;
+    String? loadError;
+    try {
+      logs = await _aiAuditService.readLogs(widget.workspaceConfig.directory);
+    } catch (error) {
+      loadError = '$error';
+    }
+    if (!mounted) {
+      return;
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('ai_actions.log'),
+          content: SizedBox(
+            width: 680,
+            child: Container(
+              height: 320,
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey.shade300),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: SingleChildScrollView(
+                child: SelectableText(
+                  loadError != null
+                      ? 'Unable to read ai_actions.log: $loadError'
+                      : (logs == null || logs.trim().isEmpty)
+                      ? 'No AI actions logged yet.'
+                      : logs!,
+                  style: const TextStyle(fontFamily: 'monospace'),
+                ),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
+            TextButton(
+              onPressed: () async {
+                try {
+                  await _aiAuditService.clearLogs(
+                    widget.workspaceConfig.directory,
+                  );
+                } catch (error, stackTrace) {
+                  await ErrorLoggingService().logError(
+                    error,
+                    stackTrace,
+                    context: 'AI audit log clear failed',
+                  );
+                }
+                if (!mounted) {
+                  return;
+                }
+                Navigator.of(context).pop();
+                ScaffoldMessenger.of(this.context).showSnackBar(
+                  const SnackBar(content: Text('ai_actions.log cleared.')),
+                );
+              },
+              child: const Text('Clear log'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _exportAllByAiFormat(AiExportFormat format) async {
+    switch (format) {
+      case AiExportFormat.pdf:
+        await _exportAllPagesToPdf();
+        break;
+      case AiExportFormat.docx:
+        await _exportAllPagesToDocx();
+        break;
+      case AiExportFormat.epub:
+        await _exportAllPagesToEpub();
+        break;
+    }
+  }
+
   Future<void> _openSettingsDialog() async {
     final isDark = widget.themeMode == ThemeMode.dark;
     await showDialog<void>(
@@ -819,6 +1349,35 @@ class _PageListScreenState extends State<PageListScreen> {
                       _showErrorLogDialog();
                     },
                     child: const Text('View error.log'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'AI',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Icon(Icons.auto_awesome_outlined, size: 18),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text('Configure AI providers and inspect AI actions.'),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      _openAiSettingsDialog();
+                    },
+                    child: const Text('Configure AI'),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      _showAiLogDialog();
+                    },
+                    child: const Text('View ai_actions.log'),
                   ),
                 ],
               ),
@@ -953,6 +1512,20 @@ class _PageListScreenState extends State<PageListScreen> {
       onPressed: _openSettingsDialog,
       icon: const Icon(Icons.settings_outlined),
       tooltip: 'Settings',
+    );
+  }
+
+  Widget _buildAiButton() {
+    return IconButton(
+      onPressed: _isAiBusy ? null : _openAiCommandDialog,
+      icon: _isAiBusy
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.auto_awesome_outlined),
+      tooltip: 'AI Command Center',
     );
   }
 
@@ -1609,7 +2182,12 @@ class _PageListScreenState extends State<PageListScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Docume'),
-        actions: [_buildSettingsButton(), _buildSortMenu(), _buildBackupMenu()],
+        actions: [
+          _buildAiButton(),
+          _buildSettingsButton(),
+          _buildSortMenu(),
+          _buildBackupMenu(),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -1649,6 +2227,7 @@ class _PageListScreenState extends State<PageListScreen> {
       appBar: AppBar(
         title: const Text('Docume'),
         actions: [
+          _buildAiButton(),
           _buildSettingsButton(),
           _buildSortMenu(),
           _buildBackupMenu(),

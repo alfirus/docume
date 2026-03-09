@@ -3,6 +3,78 @@
 ## Current Status (2026-03-08)
 
 ### Completed
+- **Started AI page-management MVP (desktop-first) with approval flow and audit logging**:
+  * Added AI domain model: `lib/models/ai_command.dart` (`AiProvider`, action types, plan/action payloads, provider settings).
+  * Added provider settings persistence: `lib/services/ai_settings_service.dart` (selected provider + endpoint/model/api-key per provider via SharedPreferences).
+  * Added provider connector client: `lib/services/ai_provider_client.dart` (Claude API + OpenAI-compatible endpoint adapters with JSON-plan prompt contract).
+  * Added AI command execution engine: `lib/services/ai_command_service.dart`:
+    - Builds AI plan from prompt + lightweight page context
+    - Applies actions with local validations for create/update/delete/template/export
+    - Reuses HTML validator and descendant delete semantics
+  * Added audit service: `lib/services/ai_audit_service.dart` writing `ai_actions.log` with request/generated/rejected/applied events.
+  * Extended `PageTemplateService` with helper `saveTemplateFromData(...)` for AI-generated templates.
+  * Integrated UI entry points in `lib/screens/page_list_screen.dart`:
+    - New AI app-bar button
+    - AI command dialog
+    - Mandatory approval dialog (explicit approve before apply)
+    - AI provider settings dialog
+    - AI audit log viewer and clear action in Settings
+  * AI export action now maps to existing bulk export methods (PDF/DOCX/EPUB).
+  * Error path integration uses existing `ErrorLoggingService`.
+  * Validation: analyzer errors on touched files = none; `flutter test` passes (90/90).
+
+- **Advanced AI hardening (phase 2): secure secrets + AI tests**:
+  * Added `flutter_secure_storage` dependency and desktop plugin registration updates.
+  * Added `AiSecretStore` abstraction (`lib/services/ai_secret_store.dart`) backed by `FlutterSecureStorage`.
+  * Refactored `AiSettingsService` to store API keys in secure storage with fallback/migration from legacy SharedPreferences keys.
+  * Added AI unit tests:
+    - `test/ai_settings_service_test.dart` (provider persistence, secure-key storage path, legacy key migration)
+    - `test/ai_command_service_test.dart` (plan parsing, create/update/delete apply path, invalid HTML rejection)
+  * Validation: `flutter pub get` successful and full `flutter test` passes (97/97).
+
+- **OpenClaw transport update: WebSocket**:
+  * Updated `AiProviderClient` so OpenClaw now uses WebSocket transport (`_callOpenClawWebSocket`) instead of HTTP.
+  * Added endpoint scheme handling for OpenClaw (`ws://`/`wss://` preferred; `http(s)` auto-converted to `ws(s)`).
+  * Added flexible WebSocket frame parsing for common payload keys (`content`, `text`, `message.content`).
+  * Kept OpenCode on HTTP OpenAI-compatible path and Claude on Anthropic HTTP path.
+  * Updated OpenClaw default endpoint to `ws://localhost:3000/ws` in `AiSettingsService`.
+  * Updated AI settings helper text in UI to reflect secure storage and OpenClaw WebSocket requirement.
+  * Validation: analyzer errors on touched files = none; `flutter test` passes (97/97).
+
+- **AI provider connection test UX**:
+  * Added `AiProviderClient.testConnection(...)` for transport-level reachability checks.
+  * OpenClaw connection test performs WebSocket handshake against configured endpoint.
+  * OpenCode/Claude connection test validates API key presence and checks endpoint TCP reachability.
+  * Added `Test Connection` action in AI settings dialog (`page_list_screen.dart`) with success/failure snackbars.
+  * Validation: analyzer errors on touched files = none; `flutter test` passes (97/97).
+
+- **OpenClaw config parity: no model input required**:
+  * Updated `AiProviderSettings.isConfigured` to be provider-aware (`model` required for Claude/OpenCode, not required for OpenClaw).
+  * Updated `AiProviderClient` OpenClaw WebSocket payload to omit `model` field entirely.
+  * Updated OpenClaw default model in settings service to empty string.
+  * Updated AI setup UX to disable model input when OpenClaw is selected and show provider-specific help text.
+  * Updated validation snackbar to show provider-specific missing-fields guidance.
+  * Added regression test in `test/ai_settings_service_test.dart` confirming OpenClaw is configured with endpoint + API key and empty model.
+  * Validation: analyzer errors on touched files = none; `flutter test` passes (98/98).
+
+- **OpenClaw gateway compatibility hardening**:
+  * Updated OpenClaw WebSocket connect path to include auth headers (`Authorization`, `x-gateway-key`, `x-api-key`).
+  * Updated OpenClaw request payload to include common gateway key aliases (`gatewayKey`, `apiKey`, `key`) and removed duplicate key field.
+  * Updated OpenClaw connection-test handshake to include gateway auth headers and explicit gateway key validation.
+  * Expanded WebSocket response parsing to support nested `data.content` / `data.text` message shapes.
+  * Validation: analyzer errors on touched files = none; `flutter test` passes (98/98).
+
+- **Error logging resilience for sandbox-denied workspace paths**:
+  * Updated `ErrorLoggingService` to gracefully fallback to app-documents `error.log` when workspace path is inaccessible (e.g. macOS sandbox restrictions on `~/Documents`).
+  * Reduced noisy repeated workspace-path failure logs by emitting fallback info once per failed path.
+  * Validation: `flutter test test/error_logging_service_test.dart` passes.
+
+- **AI audit logging resilience for sandbox-denied workspace paths (2026-03-09)**:
+  * Updated `AiAuditService` to use fallback `ai_actions.log` under app-documents when workspace log path cannot be created/read due to permission errors.
+  * Hardened `readLogs` and `clearLogs` to never surface raw filesystem exceptions.
+  * Updated AI log dialog in `page_list_screen.dart` to gracefully show readable failure text and avoid user-facing crashes on blocked paths.
+  * Validation: analyzer clean for touched files; full `flutter test` passes (98/98).
+
 - **Fixed single-page PDF export PathNotFoundException on macOS sandbox cache path**:
   * Root cause: export writes assumed output parent directories already existed.
   * Added `ExportService._writeExportFile(...)` to create parent directories recursively before `writeAsBytes`.

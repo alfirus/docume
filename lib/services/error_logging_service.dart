@@ -15,6 +15,7 @@ class ErrorLoggingService {
 
   String? _workspacePath;
   bool _initialized = false;
+  String? _lastPreferredPathFailure;
 
   /// Initialize the error logging service with workspace path
   Future<void> initialize(String? workspacePath) async {
@@ -113,7 +114,15 @@ class ErrorLoggingService {
         try {
           return await _ensureLogFileAtPath(preferredPath);
         } catch (e) {
-          debugPrint('Failed to create workspace error.log: $e');
+          // Workspace paths can be sandbox-restricted on macOS (e.g. Documents)
+          // unless persisted security-scoped access is available.
+          // Fallback silently to app documents and avoid repeated log spam.
+          if (_lastPreferredPathFailure != preferredPath) {
+            _lastPreferredPathFailure = preferredPath;
+            debugPrint(
+              'Workspace error.log unavailable, using app documents fallback.',
+            );
+          }
         }
       }
 
